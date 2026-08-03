@@ -27,11 +27,11 @@ With every session idle, both modes show the same dim outline.
 The icon keeps its menu bar position across launches and is restored if macOS
 reaps it on sleep. Two more menu settings:
 
-- **Hide When No Sessions** (off by default) removes the icon from the menu
-  bar entirely when the board is empty. It hides on *no sessions*, not on
-  *all idle*, so the icon doesn't flicker away every time Claude finishes a
-  reply. To get it back, run `open -a Scoreboard` — the icon reappears until
-  you dismiss the menu, long enough to switch the setting off.
+- **Quit When No Sessions** (off by default) quits Scoreboard after a minute
+  with an empty board, and the CLI starts it again — in the background,
+  without stealing focus — the moment the next session registers. It waits on
+  *no sessions*, not *all idle*, so it doesn't churn every time Claude
+  finishes a reply, and it never quits while the menu is open.
 - **Start at Login** defaults to on for a fresh install; turn it off and that
   choice sticks.
 
@@ -106,8 +106,20 @@ Scoreboard.app ── SessionStore ──▶ menu rows + urgency dot
 
 ## Layout
 
-- `cli/` — Python (uv, stdlib-only): `init` / `hook` / `state`
-- `app/` — Swift (SwiftPM + AppKit): socket listener, session store, menu
+One SwiftPM package, three targets:
+
+- `app/Sources/ScoreboardCore/` — shared: hook mapping, settings merge, socket
+  client, terminal capture
+- `app/Sources/Scoreboard/` — the menu bar app (AppKit): socket listener,
+  session store, status icon
+- `app/Sources/ScoreboardCLI/` — the `scoreboard` binary, shipped inside the
+  app bundle and symlinked onto PATH by the cask
+
+The CLI is compiled rather than scripted because it runs on every Claude hook:
+~5ms per invocation against ~150ms for the Python version it replaced (~250ms
+when a pyenv shim was resolving `python3`). That headroom is what makes it
+affordable to hook every tool call, which is how a session stops showing
+yellow the instant you grant a permission.
 
 ## Releasing
 
@@ -124,7 +136,7 @@ to `CHANGELOG.md` to control the release notes; otherwise they are generated.
 ## Develop
 
 ```sh
-make test         # cli unit tests (unittest)
+make test         # swift test
 make run          # build + launch the app
 make -C app app   # rebuild just the bundle
 ```

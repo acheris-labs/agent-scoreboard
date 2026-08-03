@@ -1,4 +1,5 @@
 import Foundation
+import ScoreboardCore
 
 enum SessionState: String, Codable {
     case running, idle, waiting, error, ended

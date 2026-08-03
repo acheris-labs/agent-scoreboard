@@ -1,4 +1,5 @@
 import AppKit
+import ScoreboardCore
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
@@ -14,10 +15,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var menuIsTracking = false
     private var menuRebuildDeferred = false
 
-    // Hiding the icon would otherwise hide the only way to stop hiding it.
-    // Re-opening the app forces it back until the menu is next dismissed.
-    private var forceVisible = false
-    private static let hideWhenEmptyKey = "hideWhenEmpty"
+    // With no sessions on the board, quit after this long. Generous so a
+    // session that is starting up never races the timer.
+    private var emptyTimer: Timer?
+    private static let emptyQuitDelay: TimeInterval = 60
+    private static let quitWhenEmptyKey = "quitWhenEmpty"
+
+    private var quitWhenEmpty: Bool {
+        UserDefaults.standard.bool(forKey: Self.quitWhenEmptyKey)
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -58,6 +64,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         // First run defaults to Open at Login - afterward, respect the user.
         if let message = login.bootstrapDefaultIfNeeded() { NSLog("scoreboard: \(message)") }
+        // Keep the marker honest even if the setting was changed elsewhere.
+        writeAutostartMarker()
         refresh()
     }
 
@@ -91,6 +99,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // turn before concluding the item is unrecoverable.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
             guard let self, self.statusItem.button?.window == nil else { return }
+            // Hand the old item back first: replacing only our reference
+            // leaves the dead item in the status bar as a ghost icon.
+            NSStatusBar.system.removeStatusItem(self.statusItem)
             self.statusItem = NSStatusBar.system.statusItem(
                 withLength: NSStatusItem.variableLength)
             self.configureStatusItem()
@@ -103,18 +114,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func applicationShouldHandleReopen(
         _ sender: NSApplication, hasVisibleWindows: Bool
     ) -> Bool {
-        // Also the escape hatch from "Hide When No Sessions": `open -a
-        // Scoreboard` brings the icon back so the setting can be switched off.
-        forceVisible = true
         statusItem.isVisible = true
         restoreStatusItemIfNeeded()
         return true
     }
 
-    @objc private func toggleHideWhenEmpty(_ sender: NSMenuItem) {
-        let defaults = UserDefaults.standard
-        defaults.set(!defaults.bool(forKey: Self.hideWhenEmptyKey), forKey: Self.hideWhenEmptyKey)
+    @objc private func toggleQuitWhenEmpty(_ sender: NSMenuItem) {
+        UserDefaults.standard.set(!quitWhenEmpty, forKey: Self.quitWhenEmptyKey)
+        writeAutostartMarker()
         refresh()
+    }
+
+    // The marker is the CLI's permission to relaunch us. A file rather than a
+    // `defaults read`: no subprocess on the hook path, and no risk of reading
+    // a value cfprefsd has not flushed yet.
+    private func writeAutostartMarker() {
+        do {
+            if quitWhenEmpty {
+                try FileManager.default.createDirectory(
+                    atPath: Paths.stateDir, withIntermediateDirectories: true)
+                try Data().write(to: URL(fileURLWithPath: Paths.autostart))
+            } else if FileManager.default.fileExists(atPath: Paths.autostart) {
+                try FileManager.default.removeItem(atPath: Paths.autostart)
+            }
+        } catch {
+            NSLog("scoreboard: autostart marker: \(error)")
+        }
+    }
+
+    // Arm a one-shot quit whenever the board is empty; any session cancels it.
+    private func updateEmptyTimer() {
+        emptyTimer?.invalidate()
+        emptyTimer = nil
+        // Never quit out from under an open menu - that is where the setting
+        // gets switched off. menuDidClose re-arms.
+        guard quitWhenEmpty, store.sessions.isEmpty, !menuIsTracking else { return }
+        emptyTimer = Timer.scheduledTimer(
+            withTimeInterval: Self.emptyQuitDelay, repeats: false
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.quitWhenEmpty, self.store.sessions.isEmpty,
+                    !self.menuIsTracking
+                else { return }
+                NSLog("scoreboard: no sessions for \(Self.emptyQuitDelay)s, quitting")
+                NSApp.terminate(nil)
+            }
+        }
     }
 
     @objc private func toggleLoginItem(_ sender: NSMenuItem) {
@@ -141,9 +186,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             counts[level, default: 0] += 1
         }
         statusItem.button?.image = statusItemImage(mode: IconMode.current, counts: counts)
-
-        let hideWhenEmpty = UserDefaults.standard.bool(forKey: Self.hideWhenEmptyKey)
-        statusItem.isVisible = forceVisible || !(hideWhenEmpty && store.sessions.isEmpty)
+        updateEmptyTimer()
 
         if menuIsTracking {
             menuRebuildDeferred = true
@@ -199,16 +242,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         iconItem.submenu = iconMenu
         menu.addItem(iconItem)
 
-        let hideItem = NSMenuItem(
-            title: "Hide When No Sessions", action: #selector(toggleHideWhenEmpty(_:)),
+        let quitWhenEmptyItem = NSMenuItem(
+            title: "Quit When No Sessions", action: #selector(toggleQuitWhenEmpty(_:)),
             keyEquivalent: "")
-        hideItem.target = self
-        hideItem.state =
-            UserDefaults.standard.bool(forKey: Self.hideWhenEmptyKey) ? .on : .off
-        hideItem.toolTip =
-            "Remove the icon from the menu bar when no Claude sessions exist. "
-            + "Open Scoreboard again to bring it back."
-        menu.addItem(hideItem)
+        quitWhenEmptyItem.target = self
+        quitWhenEmptyItem.state = quitWhenEmpty ? .on : .off
+        quitWhenEmptyItem.toolTip =
+            "Quit Scoreboard after a minute with no Claude sessions. "
+            + "It starts itself again when the next session registers."
+        menu.addItem(quitWhenEmptyItem)
 
         let loginItem = NSMenuItem(
             title: "Start at Login", action: #selector(toggleLoginItem(_:)), keyEquivalent: "")
@@ -254,11 +296,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func menuDidClose(_ menu: NSMenu) {
         menuIsTracking = false
-        // The forced reveal lasts only until the user has had their look.
-        if forceVisible {
-            forceVisible = false
-            DispatchQueue.main.async { [weak self] in self?.refresh() }
-        }
+        // Quitting was suppressed while the menu was open; re-arm now.
+        updateEmptyTimer()
         if menuRebuildDeferred {
             menuRebuildDeferred = false
             // Rebuild after tracking fully unwinds.

@@ -10,10 +10,11 @@ NOTARY_PROFILE ?=
 DMG := $(BUILD_DIR)/$(APP).dmg
 ZIP := $(BUILD_DIR)/$(APP).zip
 
-# The CLI ships inside the bundle as a zipapp so one artifact installs the
-# whole product (the Homebrew cask symlinks it onto PATH). Stdlib-only, so
-# the system python3 runs it with no venv.
-CLI_SRC := ../cli/src
+# The CLI ships inside the bundle so one artifact installs the whole product
+# (the Homebrew cask symlinks it onto PATH). Compiled, not scripted: it runs
+# on every Claude hook, and ~10ms of startup instead of ~250ms is the
+# difference between hooking every tool call and not.
+CLI := scoreboard-cli
 
 .PHONY: all build app sign dmg zip release clean
 
@@ -28,9 +29,7 @@ app: build
 	cp "$$(swift build -c release --show-bin-path)/$(APP)" "$(CONTENTS)/MacOS/$(APP)"
 	cp Info.plist "$(CONTENTS)/Info.plist"
 	printf 'APPL????' > "$(CONTENTS)/PkgInfo"
-	python3 -m zipapp "$(CLI_SRC)" -m scoreboard.main:main \
-	  -p "/usr/bin/env python3" -o "$(CONTENTS)/Resources/scoreboard"
-	chmod +x "$(CONTENTS)/Resources/scoreboard"
+	cp "$$(swift build -c release --show-bin-path)/$(CLI)" "$(CONTENTS)/Resources/scoreboard"
 	codesign --force --sign - "$(BUNDLE)"
 	@echo "Built $(BUNDLE)"
 

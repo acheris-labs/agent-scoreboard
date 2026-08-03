@@ -51,7 +51,6 @@ jobs:
         run: |
           plutil -replace CFBundleShortVersionString -string "${{ steps.v.outputs.version }}" app/Info.plist
           plutil -replace CFBundleVersion            -string "${{ steps.v.outputs.version }}" app/Info.plist
-          sed -i '' 's/^version = ".*"/version = "${{ steps.v.outputs.version }}"/' cli/pyproject.toml
 
       # --- Code signing setup ----------------------------------------------
       - name: Import signing certificate

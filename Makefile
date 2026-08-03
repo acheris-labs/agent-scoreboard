@@ -1,17 +1,15 @@
-.PHONY: all cli app install run test clean
+.PHONY: all app install run test clean
 
-all: cli app
+all: app
 
-cli:  ## install the scoreboard CLI onto PATH (editable)
-	cd cli && uv tool install --force --editable .
-
-app:  ## build Scoreboard.app
+app:  ## build Scoreboard.app (menu bar app + embedded CLI)
 	$(MAKE) -C app app
 
-install: cli app  ## install CLI + copy app to ~/Applications
+install: app  ## install to ~/Applications and put the CLI on PATH
 	rm -rf ~/Applications/Scoreboard.app
-	mkdir -p ~/Applications
+	mkdir -p ~/Applications ~/.local/bin
 	cp -R app/build/Scoreboard.app ~/Applications/
+	ln -sf ~/Applications/Scoreboard.app/Contents/Resources/scoreboard ~/.local/bin/scoreboard
 
 run: app  ## build and (re)launch the menu bar app
 	@# `open` only activates an already-running app; kill first so the new build runs
@@ -19,7 +17,7 @@ run: app  ## build and (re)launch the menu bar app
 	open app/build/Scoreboard.app
 
 test:
-	cd cli && uv run python -m unittest discover -s tests
+	cd app && swift test
 
 clean:
 	$(MAKE) -C app clean

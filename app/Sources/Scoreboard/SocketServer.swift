@@ -1,4 +1,5 @@
 import Foundation
+import ScoreboardCore
 
 // Unix-socket listener for hook events. Clients (the `scoreboard hook` CLI)
 // connect, write one NDJSON line, and close - there is no reply protocol.

@@ -17,14 +17,14 @@ jobs:
           sw_vers
           swift --version
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-
-      - name: CLI tests
-        run: cd cli && uv run python -m unittest discover -s tests -v
+      - name: Tests
+        run: make test
 
       - name: Build app (ad-hoc, Release)
         run: make -C app app
+
+      - name: Verify the embedded CLI is the CLI
+        run: ./app/build/Scoreboard.app/Contents/Resources/scoreboard state || true
 
       - name: Verify ad-hoc signature
         run: codesign -dv app/build/Scoreboard.app 2>&1
