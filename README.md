@@ -9,9 +9,20 @@ session with a colored dot:
 - 🟡 waiting — blocked on a question or permission
 - 🔴 error — a session errored
 
-The menu bar icon carries an urgency dot (red > yellow) whenever any session
-needs attention. Clicking a session row jumps to its terminal tab (Ghostty
-supported; adapters make other terminals easy to add).
+Clicking a session row jumps to its terminal tab (Ghostty supported; adapters
+make other terminals easy to add).
+
+## Menu bar icon
+
+A stoplight whose lamps light for the states present on the board. The **Icon**
+submenu picks between two modes (remembered across restarts):
+
+| Mode | Icon |
+|:-----|:-----|
+| **Stoplight** | Three lamps, each lit whenever any session is in that state |
+| **Highest Wins** | The same stoplight plus a notification bubble in the highest-priority colour (red > yellow > green) showing that state's session count — no number when it's just one |
+
+With every session idle, both modes show the same dim outline.
 
 ## Install
 

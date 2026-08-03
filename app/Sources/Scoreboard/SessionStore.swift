@@ -2,6 +2,16 @@ import Foundation
 
 enum SessionState: String, Codable {
     case running, idle, waiting, error, ended
+
+    // Idle and ended sessions want no attention, so they light no lamp.
+    var level: StatusLevel? {
+        switch self {
+        case .running: return .running
+        case .waiting: return .waiting
+        case .error: return .error
+        case .idle, .ended: return nil
+        }
+    }
 }
 
 struct Session: Codable {

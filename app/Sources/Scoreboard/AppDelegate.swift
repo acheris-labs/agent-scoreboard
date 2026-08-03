@@ -58,16 +58,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: - Rendering
 
     private func refresh() {
-        let states = Set(store.sessions.values.map(\.state))
-        statusItem.button?.image = statusItemImage(
-            hasError: states.contains(.error),
-            hasWaiting: states.contains(.waiting),
-            hasRunning: states.contains(.running))
+        var counts: [StatusLevel: Int] = [:]
+        for session in store.sessions.values {
+            guard let level = session.state.level else { continue }
+            counts[level, default: 0] += 1
+        }
+        statusItem.button?.image = statusItemImage(mode: IconMode.current, counts: counts)
         if menuIsTracking {
             menuRebuildDeferred = true
         } else {
             rebuildMenu()
         }
+    }
+
+    @objc private func setIconMode(_ sender: NSMenuItem) {
+        guard let mode = sender.representedObject as? String else { return }
+        UserDefaults.standard.set(mode, forKey: IconMode.defaultsKey)
+        refresh()
     }
 
     private func rebuildMenu() {
@@ -97,6 +104,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(item)
         }
         menu.addItem(.separator())
+
+        let iconItem = NSMenuItem(title: "Icon", action: nil, keyEquivalent: "")
+        let iconMenu = NSMenu()
+        for mode in IconMode.allCases {
+            let item = NSMenuItem(
+                title: mode.displayName, action: #selector(setIconMode(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = mode.rawValue
+            item.state = mode == IconMode.current ? .on : .off
+            iconMenu.addItem(item)
+        }
+        iconItem.submenu = iconMenu
+        menu.addItem(iconItem)
+
         menu.addItem(
             NSMenuItem(
                 title: "Quit Scoreboard", action: #selector(NSApplication.terminate(_:)),
@@ -114,17 +135,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let size = NSSize(width: 12, height: 12)
         return NSImage(size: size, flipped: false) { _ in
             let rect = NSRect(x: 1.5, y: 1.5, width: 9, height: 9)
-            switch state {
-            case .running:
-                runningGreen.setFill()
+            if let level = state.level {
+                level.color.setFill()
                 NSBezierPath(ovalIn: rect).fill()
-            case .waiting:
-                StatusDot.waiting.color.setFill()
-                NSBezierPath(ovalIn: rect).fill()
-            case .error:
-                StatusDot.error.color.setFill()
-                NSBezierPath(ovalIn: rect).fill()
-            case .idle, .ended:
+            } else {
                 NSColor.secondaryLabelColor.setStroke()
                 let ring = NSBezierPath(ovalIn: rect.insetBy(dx: 0.75, dy: 0.75))
                 ring.lineWidth = 1.5

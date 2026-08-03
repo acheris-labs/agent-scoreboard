@@ -203,7 +203,12 @@ jobs:
           TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          : "${TAP_TOKEN:?missing HOMEBREW_TAP_GITHUB_TOKEN secret}"
+          # Without the tap token the release itself is still fine - the cask
+          # just has to be pushed by hand. Warn rather than fail the run.
+          if [ -z "${TAP_TOKEN:-}" ]; then
+            echo "::warning::HOMEBREW_TAP_GITHUB_TOKEN not set; skipping cask update"
+            exit 0
+          fi
           export VERSION="${{ steps.v.outputs.version }}"
           export SHA_APP="$(gh release download "${{ steps.v.outputs.tag }}" \
             --pattern "Scoreboard-${VERSION}.zip.sha256" -O - | cut -d' ' -f1)"
