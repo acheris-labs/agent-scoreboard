@@ -215,7 +215,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             guard let level = session.state.level else { continue }
             counts[level, default: 0] += 1
         }
-        statusItem.button?.image = statusItemImage(mode: IconMode.current, counts: counts)
+        statusItem.button?.image = statusItemImage(counts: counts)
         updateEmptyTimer()
 
         if menuIsTracking {
@@ -223,12 +223,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         } else {
             rebuildMenu()
         }
-    }
-
-    @objc private func setIconMode(_ sender: NSMenuItem) {
-        guard let mode = sender.representedObject as? String else { return }
-        UserDefaults.standard.set(mode, forKey: IconMode.defaultsKey)
-        refresh()
     }
 
     private func rebuildMenu() {
@@ -258,19 +252,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(item)
         }
         menu.addItem(.separator())
-
-        let iconItem = NSMenuItem(title: "Icon", action: nil, keyEquivalent: "")
-        let iconMenu = NSMenu()
-        for mode in IconMode.allCases {
-            let item = NSMenuItem(
-                title: mode.displayName, action: #selector(setIconMode(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = mode.rawValue
-            item.state = mode == IconMode.current ? .on : .off
-            iconMenu.addItem(item)
-        }
-        iconItem.submenu = iconMenu
-        menu.addItem(iconItem)
 
         let quitWhenEmptyItem = NSMenuItem(
             title: "Quit When No Sessions", action: #selector(toggleQuitWhenEmpty(_:)),

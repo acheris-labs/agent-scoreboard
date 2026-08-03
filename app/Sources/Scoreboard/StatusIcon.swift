@@ -25,27 +25,7 @@ enum StatusLevel: Int, CaseIterable {
     }
 }
 
-// How the menu bar icon renders. Persisted so the choice survives a restart.
-enum IconMode: String, CaseIterable {
-    case stoplight
-    case highestWins = "highest-wins"
-
-    static let defaultsKey = "iconMode"
-
-    static var current: IconMode {
-        IconMode(rawValue: UserDefaults.standard.string(forKey: defaultsKey) ?? "")
-            ?? .stoplight
-    }
-
-    var displayName: String {
-        switch self {
-        case .stoplight: return "Stoplight"
-        case .highestWins: return "Highest Wins"
-        }
-    }
-}
-
-// Scoreboard mode reserves room to the right of the glyph for the badge.
+// The badge reserves room to the right of the glyph.
 let stoplightIconSize = NSSize(width: 22, height: 22)
 let badgeIconSize = NSSize(width: 24, height: 22)
 
@@ -55,20 +35,15 @@ private let lampX: CGFloat = 5
 private let lampSize: CGFloat = 6
 private let badgeRect = NSRect(x: 11, y: 9.5, width: 11, height: 11)
 
-// The menu bar icon. The stoplight is always drawn; the two modes differ
-// only in whether a notification bubble rides on its top-right corner.
-//
-// - stoplight:     three lamps, each lit whenever any session is in that state.
-// - highest-wins:  the same stoplight, plus a bubble in the highest-priority
-//                  colour carrying that state's count (no number when it's 1).
-//
-// With nothing active both modes render the same dim template outline.
+// The menu bar icon: a stoplight whose lamps light for the states present on
+// the board, plus a notification bubble on its top-right corner in the
+// highest-priority colour (red > yellow > green) carrying that state's count.
+// No number when the count is one; with nothing active, a dim template
+// outline and no bubble.
 @MainActor
-func statusItemImage(mode: IconMode, counts: [StatusLevel: Int]) -> NSImage {
+func statusItemImage(counts: [StatusLevel: Int]) -> NSImage {
     var badge: (level: StatusLevel, count: Int)?
-    if mode == .highestWins,
-        let top = StatusLevel.allCases.reversed().first(where: { (counts[$0] ?? 0) > 0 })
-    {
+    if let top = StatusLevel.allCases.reversed().first(where: { (counts[$0] ?? 0) > 0 }) {
         badge = (top, counts[top] ?? 0)
     }
     return iconImage(counts: counts, badge: badge)

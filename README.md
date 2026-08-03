@@ -14,15 +14,13 @@ make other terminals easy to add).
 
 ## Menu bar icon
 
-A stoplight whose lamps light for the states present on the board. The **Icon**
-submenu picks between two modes (remembered across restarts):
+A stoplight whose lamps light for the states present on the board, plus a
+notification bubble on its top-right corner in the highest-priority colour
+(red > yellow > green) showing that state's session count — no number when
+it's just one. So three sessions waiting behind two running ones reads as a
+yellow bubble with a 3.
 
-| Mode | Icon |
-|:-----|:-----|
-| **Stoplight** | Three lamps, each lit whenever any session is in that state |
-| **Highest Wins** | The same stoplight plus a notification bubble in the highest-priority colour (red > yellow > green) showing that state's session count — no number when it's just one |
-
-With every session idle, both modes show the same dim outline.
+With every session idle, the icon is a dim outline and the bubble disappears.
 
 The icon keeps its menu bar position across launches and is restored if macOS
 reaps it on sleep. Two more menu settings:
