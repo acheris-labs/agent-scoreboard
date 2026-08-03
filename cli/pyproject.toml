@@ -1,0 +1,16 @@
+[project]
+name = "scoreboard"
+version = "0.1.0"
+description = "Claude Code session scoreboard: hooks -> macOS menu bar"
+authors = [
+    { name = "chris", email = "chris.madden@gmail.com" }
+]
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+scoreboard = "scoreboard.main:main"
+
+[build-system]
+requires = ["uv_build>=0.12.1,<0.13.0"]
+build-backend = "uv_build"
