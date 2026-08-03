@@ -35,9 +35,17 @@ app: build
 
 # Replace the ad-hoc signature with a hardened-runtime Developer ID one,
 # which notarization requires.
+#
+# The embedded CLI is signed FIRST, then the bundle, which seals it. Order
+# matters: signing only the bundle leaves the nested Mach-O unsigned and
+# notarization rejects it ("not signed with a valid Developer ID
+# certificate"). No --deep, which would re-sign the inner binary without
+# these options.
 sign: app
 	@test -n "$(SIGN_ID)" || { echo "SIGN_ID is required"; exit 1; }
 	@test -n "$(NOTARY_PROFILE)" || { echo "NOTARY_PROFILE is required"; exit 1; }
+	codesign --force --options runtime --timestamp \
+	  --sign "$(SIGN_ID)" "$(CONTENTS)/Resources/scoreboard"
 	codesign --force --options runtime --timestamp --sign "$(SIGN_ID)" "$(BUNDLE)"
 	codesign --verify --strict --deep "$(BUNDLE)"
 
