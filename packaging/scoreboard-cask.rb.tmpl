@@ -1,0 +1,50 @@
+# Cask template for acheris-labs/homebrew-tools (Casks/scoreboard.rb).
+# Rendered by the release workflow with envsubst: VERSION and SHA_APP come
+# from the release's notarized app zip.
+#
+# One artifact installs the whole product: the app owns the state and listens
+# on the unix socket, and ships the CLI inside the bundle as a zipapp - the
+# `binary` stanza symlinks it onto PATH. Signed, notarized, stapled.
+cask "scoreboard" do
+  version "${VERSION}"
+  sha256 "${SHA_APP}"
+
+  url "https://github.com/acheris-labs/agent-scoreboard/releases/download/v#{version}/Scoreboard-#{version}.zip"
+  name "Scoreboard"
+  desc "Claude Code session scoreboard for the macOS menu bar"
+  homepage "https://github.com/acheris-labs/agent-scoreboard"
+
+  depends_on macos: :ventura
+
+  app "Scoreboard.app"
+  binary "#{appdir}/Scoreboard.app/Contents/Resources/scoreboard"
+
+  # Open on install: Scoreboard is a menu bar app with no Dock icon, so a
+  # fresh install is otherwise invisible - nothing launches and the caveats
+  # scroll past. Opening it puts the stoplight in the menu bar, where the
+  # next step (scoreboard init) can actually be found.
+  postflight do
+    system_command "/usr/bin/open", args: ["-a", "#{appdir}/Scoreboard.app"]
+  end
+
+  uninstall quit: "com.chrismadden.scoreboard"
+
+  # `brew uninstall --zap scoreboard` is the full teardown: session state,
+  # snapshot, and hook log. The Claude Code hooks live in the user's own
+  # settings.json, which scoreboard only edits on request - run
+  # `scoreboard init --remove` before zapping to unwind those.
+  zap trash: [
+        "~/.local/state/scoreboard",
+        "~/Library/Caches/com.chrismadden.scoreboard",
+        "~/Library/Preferences/com.chrismadden.scoreboard.plist",
+      ]
+
+  caveats <<~EOS
+    Scoreboard is opening now - look for the stoplight icon in the menu bar
+    (top-right of the screen). Next:
+
+      scoreboard init     # register the Claude Code hooks
+
+    Clicking a session in the menu jumps to its terminal tab.
+  EOS
+end

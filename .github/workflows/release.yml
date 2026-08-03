@@ -98,21 +98,28 @@ jobs:
             --password   "$APPLE_APP_PASSWORD"
 
       # --- Build / sign / notarize / DMG -----------------------------------
-      - name: Build, sign, notarize, package DMG
+      - name: Build, sign, notarize, package zip + DMG
         env:
           DEVID_IDENTITY: ${{ secrets.DEVID_IDENTITY }}
         run: |
           set -euo pipefail
           : "${DEVID_IDENTITY:?missing DEVID_IDENTITY secret}"
-          make -C app dmg SIGN_ID="$DEVID_IDENTITY" NOTARY_PROFILE="$NOTARY_PROFILE"
+          make -C app release SIGN_ID="$DEVID_IDENTITY" NOTARY_PROFILE="$NOTARY_PROFILE"
 
-      - name: Locate DMG
-        id: dmg
+      # The .sha256 sidecar lets the cask job read the hash without
+      # re-downloading the zip.
+      - name: Collect artifacts
+        id: artifacts
         run: |
-          VERSIONED="Scoreboard-${{ steps.v.outputs.version }}.dmg"
-          mv app/build/Scoreboard.dmg "$VERSIONED"
-          echo "path=$VERSIONED" >> "$GITHUB_OUTPUT"
-          ls -la "$VERSIONED"
+          set -euo pipefail
+          VERSION="${{ steps.v.outputs.version }}"
+          mv app/build/Scoreboard.dmg "Scoreboard-${VERSION}.dmg"
+          mv app/build/Scoreboard.zip "Scoreboard-${VERSION}.zip"
+          shasum -a 256 "Scoreboard-${VERSION}.zip" > "Scoreboard-${VERSION}.zip.sha256"
+          echo "dmg=Scoreboard-${VERSION}.dmg" >> "$GITHUB_OUTPUT"
+          echo "zip=Scoreboard-${VERSION}.zip" >> "$GITHUB_OUTPUT"
+          echo "sha=Scoreboard-${VERSION}.zip.sha256" >> "$GITHUB_OUTPUT"
+          ls -la Scoreboard-${VERSION}.*
 
       - name: Cleanup keychain
         if: always()
@@ -167,4 +174,52 @@ jobs:
           fi
           gh release create "${{ steps.v.outputs.tag }}" \
             "${ARGS[@]}" \
-            "${{ steps.dmg.outputs.path }}"
+            "${{ steps.artifacts.outputs.dmg }}" \
+            "${{ steps.artifacts.outputs.zip }}" \
+            "${{ steps.artifacts.outputs.sha }}"
+
+  # Regenerate the cask in acheris-labs/homebrew-tools from the notarized zip.
+  # Needs a PAT: the default GITHUB_TOKEN cannot write to another repository.
+  brew:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: v
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Update cask
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          : "${TAP_TOKEN:?missing HOMEBREW_TAP_GITHUB_TOKEN secret}"
+          export VERSION="${{ steps.v.outputs.version }}"
+          export SHA_APP="$(gh release download "${{ steps.v.outputs.tag }}" \
+            --pattern "Scoreboard-${VERSION}.zip.sha256" -O - | cut -d' ' -f1)"
+          test -n "$SHA_APP" || { echo "could not read zip sha256"; exit 1; }
+          envsubst < packaging/scoreboard-cask.rb.tmpl > scoreboard.rb
+
+          git clone "https://x-access-token:${TAP_TOKEN}@github.com/acheris-labs/homebrew-tools.git" tap
+          mkdir -p tap/Casks
+          cp scoreboard.rb tap/Casks/scoreboard.rb
+          cd tap
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add Casks/scoreboard.rb
+          if git diff --cached --quiet; then
+            echo "cask unchanged; nothing to push"
+          else
+            git commit -m "chore: update scoreboard cask to ${{ steps.v.outputs.tag }}"
+            git push
+          fi
