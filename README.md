@@ -24,17 +24,38 @@ submenu picks between two modes (remembered across restarts):
 
 With every session idle, both modes show the same dim outline.
 
-The icon keeps its menu bar position across launches, is restored if macOS
-reaps it on sleep, and **Start at Login** (in the menu) defaults to on for a
-fresh install — turn it off and that choice sticks.
+The icon keeps its menu bar position across launches and is restored if macOS
+reaps it on sleep. Two more menu settings:
+
+- **Hide When No Sessions** (off by default) removes the icon from the menu
+  bar entirely when the board is empty. It hides on *no sessions*, not on
+  *all idle*, so the icon doesn't flicker away every time Claude finishes a
+  reply. To get it back, run `open -a Scoreboard` — the icon reappears until
+  you dismiss the menu, long enough to switch the setting off.
+- **Start at Login** defaults to on for a fresh install; turn it off and that
+  choice sticks.
 
 ## Install
 
 ```sh
-make install      # installs the `scoreboard` CLI (uv) + Scoreboard.app -> ~/Applications
-open ~/Applications/Scoreboard.app
+brew tap acheris-labs/tools
+brew install --cask acheris-labs/tools/scoreboard
 scoreboard init   # registers Claude Code hooks in ~/.claude/settings.json
 ```
+
+One artifact installs everything: the app bundle carries the CLI, which the
+cask symlinks onto your PATH. `scoreboard init` is the only per-machine step,
+since the hooks live in that machine's own `~/.claude/settings.json`.
+
+Upgrading needs `brew update` first — on its own, `brew upgrade` checks a
+stale copy of the tap and reports the latest version is already installed:
+
+```sh
+brew update && brew upgrade --cask scoreboard
+```
+
+To build from source instead, use `make install` (app to `~/Applications`,
+CLI via `uv tool install --editable`).
 
 `scoreboard init` is idempotent — re-running prints a per-hook status check.
 `scoreboard init --remove` reverses exactly what it added (a timestamped

@@ -14,6 +14,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var menuIsTracking = false
     private var menuRebuildDeferred = false
 
+    // Hiding the icon would otherwise hide the only way to stop hiding it.
+    // Re-opening the app forces it back until the menu is next dismissed.
+    private var forceVisible = false
+    private static let hideWhenEmptyKey = "hideWhenEmpty"
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         terminateOlderInstances()
@@ -98,9 +103,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func applicationShouldHandleReopen(
         _ sender: NSApplication, hasVisibleWindows: Bool
     ) -> Bool {
+        // Also the escape hatch from "Hide When No Sessions": `open -a
+        // Scoreboard` brings the icon back so the setting can be switched off.
+        forceVisible = true
         statusItem.isVisible = true
         restoreStatusItemIfNeeded()
         return true
+    }
+
+    @objc private func toggleHideWhenEmpty(_ sender: NSMenuItem) {
+        let defaults = UserDefaults.standard
+        defaults.set(!defaults.bool(forKey: Self.hideWhenEmptyKey), forKey: Self.hideWhenEmptyKey)
+        refresh()
     }
 
     @objc private func toggleLoginItem(_ sender: NSMenuItem) {
@@ -127,6 +141,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             counts[level, default: 0] += 1
         }
         statusItem.button?.image = statusItemImage(mode: IconMode.current, counts: counts)
+
+        let hideWhenEmpty = UserDefaults.standard.bool(forKey: Self.hideWhenEmptyKey)
+        statusItem.isVisible = forceVisible || !(hideWhenEmpty && store.sessions.isEmpty)
+
         if menuIsTracking {
             menuRebuildDeferred = true
         } else {
@@ -181,6 +199,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         iconItem.submenu = iconMenu
         menu.addItem(iconItem)
 
+        let hideItem = NSMenuItem(
+            title: "Hide When No Sessions", action: #selector(toggleHideWhenEmpty(_:)),
+            keyEquivalent: "")
+        hideItem.target = self
+        hideItem.state =
+            UserDefaults.standard.bool(forKey: Self.hideWhenEmptyKey) ? .on : .off
+        hideItem.toolTip =
+            "Remove the icon from the menu bar when no Claude sessions exist. "
+            + "Open Scoreboard again to bring it back."
+        menu.addItem(hideItem)
+
         let loginItem = NSMenuItem(
             title: "Start at Login", action: #selector(toggleLoginItem(_:)), keyEquivalent: "")
         loginItem.target = self
@@ -225,6 +254,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func menuDidClose(_ menu: NSMenu) {
         menuIsTracking = false
+        // The forced reveal lasts only until the user has had their look.
+        if forceVisible {
+            forceVisible = false
+            DispatchQueue.main.async { [weak self] in self?.refresh() }
+        }
         if menuRebuildDeferred {
             menuRebuildDeferred = false
             // Rebuild after tracking fully unwinds.
