@@ -24,6 +24,10 @@ submenu picks between two modes (remembered across restarts):
 
 With every session idle, both modes show the same dim outline.
 
+The icon keeps its menu bar position across launches, is restored if macOS
+reaps it on sleep, and **Start at Login** (in the menu) defaults to on for a
+fresh install — turn it off and that choice sticks.
+
 ## Install
 
 ```sh

@@ -5,8 +5,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
     private let menu = NSMenu()
     private let store = SessionStore()
+    private let login = LoginItemController()
     private var server: SocketServer?
     private var reapTimer: Timer?
+    private var wakeObserver: NSObjectProtocol?
 
     // Rebuilding the menu while it is open yanks it shut; defer until close.
     private var menuIsTracking = false
@@ -36,13 +38,74 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.delegate = self
         menu.autoenablesItems = false
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        statusItem.menu = menu
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        configureStatusItem()
+
+        // macOS sometimes reaps status items on sleep and never restores them:
+        // the process keeps running, the icon just vanishes. These sleep/wake
+        // notifications post only on the *workspace* center, never the default
+        // NotificationCenter.
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.restoreStatusItemIfNeeded() }
+        }
+
+        // First run defaults to Open at Login - afterward, respect the user.
+        if let message = login.bootstrapDefaultIfNeeded() { NSLog("scoreboard: \(message)") }
         refresh()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         server?.stop()
+        if let wakeObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver)
+        }
+    }
+
+    // Shared by launch and rebuild so a recreated item behaves identically.
+    private func configureStatusItem() {
+        // Persist the icon's menu bar position. Without an autosave name a
+        // fresh item lands at the left end of the status area - the side a
+        // notch clips first - and any position the user drags to is forgotten
+        // on the next launch. Never rename this: the saved position is keyed
+        // off it.
+        statusItem.autosaveName = "ScoreboardStatusItem"
+        statusItem.menu = menu
+    }
+
+    // Re-assert the status item, preferring the cheap path. Recreating an
+    // NSStatusItem churns its menu bar position - on a crowded bar that can
+    // drop the icon into the strip a notch clips - so toggle isVisible first
+    // and rebuild only if the item is genuinely gone. A live item's button is
+    // hosted in an NSStatusBarWindow; once reaped it has no window.
+    private func restoreStatusItemIfNeeded() {
+        guard statusItem.button?.window == nil else { return }
+        statusItem.isVisible = true
+        // AppKit doesn't rehost the button synchronously, so give it a runloop
+        // turn before concluding the item is unrecoverable.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            guard let self, self.statusItem.button?.window == nil else { return }
+            self.statusItem = NSStatusBar.system.statusItem(
+                withLength: NSStatusItem.variableLength)
+            self.configureStatusItem()
+            self.refresh()
+        }
+    }
+
+    // What people try when the icon has vanished: re-opening the app while
+    // it is already running.
+    func applicationShouldHandleReopen(
+        _ sender: NSApplication, hasVisibleWindows: Bool
+    ) -> Bool {
+        statusItem.isVisible = true
+        restoreStatusItemIfNeeded()
+        return true
+    }
+
+    @objc private func toggleLoginItem(_ sender: NSMenuItem) {
+        if let message = login.setEnabled(!login.isEnabled) { NSLog("scoreboard: \(message)") }
+        refresh()
     }
 
     // A second launch (make run while running) must own the socket: kill the
@@ -117,6 +180,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         iconItem.submenu = iconMenu
         menu.addItem(iconItem)
+
+        let loginItem = NSMenuItem(
+            title: "Start at Login", action: #selector(toggleLoginItem(_:)), keyEquivalent: "")
+        loginItem.target = self
+        loginItem.state = login.isEnabled ? .on : .off
+        menu.addItem(loginItem)
 
         menu.addItem(
             NSMenuItem(
