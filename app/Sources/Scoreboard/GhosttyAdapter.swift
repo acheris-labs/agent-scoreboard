@@ -1,47 +1,26 @@
 import AppKit
+import ScoreboardCore
 
-// All Ghostty AppleScript lives here. Ghostty's `focus` command raises the
-// terminal's window and selects its tab in one step.
+// Runs the Ghostty AppleScript. The scripts themselves are built in
+// ScoreboardCore.GhosttyScript, which is pure and unit-tested; this half is
+// the side effect. Ghostty's `focus` command raises the terminal's window and
+// selects its tab in one step.
 @MainActor
 final class GhosttyAdapter: TerminalAdapter {
     static let kind = "ghostty"
 
     func jump(origin: [String: String], cwd: String) -> Bool {
         if let terminalId = origin["terminal_id"], !terminalId.isEmpty,
-            run(script: focusScript(byId: terminalId))
+            run(script: GhosttyScript.focus(terminalID: terminalId))
         {
             return true
         }
         // Terminal gone or origin never captured: best-effort cwd match,
         // then plain app activation so the click always does something.
-        if !cwd.isEmpty, run(script: focusScript(byCwd: cwd)) {
+        if !cwd.isEmpty, run(script: GhosttyScript.focus(workingDirectory: cwd)) {
             return true
         }
-        return run(script: "tell application \"Ghostty\" to activate")
-    }
-
-    private func focusScript(byId terminalId: String) -> String {
-        """
-        tell application "Ghostty"
-            focus (first terminal whose id is "\(escape(terminalId))")
-            activate
-        end tell
-        """
-    }
-
-    private func focusScript(byCwd cwd: String) -> String {
-        """
-        tell application "Ghostty"
-            focus (first terminal whose working directory is "\(escape(cwd))")
-            activate
-        end tell
-        """
-    }
-
-    private func escape(_ value: String) -> String {
-        value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
+        return run(script: GhosttyScript.activate)
     }
 
     private func run(script: String) -> Bool {

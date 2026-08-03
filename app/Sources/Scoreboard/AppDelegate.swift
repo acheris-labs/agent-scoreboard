@@ -125,18 +125,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             ?? "unknown"
         let alert = NSAlert()
         alert.messageText = "Scoreboard \(version)"
-        alert.informativeText = """
-            A menu bar scoreboard for your Claude Code sessions.
-
-            Claude Code hooks report every state change, so the stoplight \
-            shows what needs you: green is working, yellow is waiting on an \
-            answer or a permission, red is an error. Click any session to \
-            jump straight to its terminal tab.
-            """
+        alert.informativeText = "MIT © 2026 Chris Madden"
         alert.alertStyle = .informational
         // The board's own glyph, all lamps lit, rather than a generic icon.
         alert.icon = iconImage(
-            counts: [.running: 1, .waiting: 1, .error: 1], badge: nil, height: 96)
+            counts: [.running: 1, .waiting: 1, .error: 1], badge: nil, height: 96,
+            filledHousing: true)
         alert.addButton(withTitle: "OK")
         alert.addButton(withTitle: "GitHub")
         // An accessory app has no windows to bring forward, so the modal

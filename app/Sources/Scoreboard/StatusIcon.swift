@@ -31,9 +31,17 @@ let badgeIconSize = NSSize(width: 24, height: 22)
 
 // Geometry, in unflipped coordinates (y grows upward).
 private let housingRect = NSRect(x: 2.5, y: 0.5, width: 11, height: 21)
+private let housingStroke: CGFloat = 1.2
 private let lampX: CGFloat = 5
 private let lampSize: CGFloat = 6
 private let badgeRect = NSRect(x: 11, y: 9.5, width: 11, height: 11)
+
+// Derived rather than hardcoded, so the gap above the top lamp is always the
+// same as the gap below the bottom one: four equal spaces (two margins, two
+// between lamps) share whatever the three lamps leave inside the housing.
+private let lampGap = (housingRect.height - housingStroke - 3 * lampSize) / 4
+private let lampFirstY = housingRect.minY + housingStroke / 2 + lampGap
+private let lampPitch = lampSize + lampGap
 
 // The menu bar icon: a stoplight whose lamps light for the states present on
 // the board, plus a notification bubble on its top-right corner in the
@@ -52,7 +60,7 @@ func statusItemImage(counts: [StatusLevel: Int]) -> NSImage {
 @MainActor
 func iconImage(
     counts: [StatusLevel: Int], badge: (level: StatusLevel, count: Int)?,
-    height: CGFloat? = nil
+    height: CGFloat? = nil, filledHousing: Bool = false
 ) -> NSImage {
     let anyLit = counts.values.contains { $0 > 0 }
     var size = badge == nil ? stoplightIconSize : badgeIconSize
@@ -72,13 +80,23 @@ func iconImage(
         let housing = NSBezierPath(
             roundedRect: housingRect, xRadius: 5.5, yRadius: 5.5)
         housing.lineWidth = 1.2
-        outline.withAlphaComponent(0.9).setStroke()
+        // At a glyph's size an outline reads best, but blown up for the About
+        // dialog a hollow shape looks like flat line art - fill the body so it
+        // reads as an object with lamps set into it.
+        if filledHousing {
+            NSColor(white: 0.13, alpha: 1).setFill()
+            housing.fill()
+            NSColor(white: 0.32, alpha: 1).setStroke()
+        } else {
+            outline.withAlphaComponent(0.9).setStroke()
+        }
         housing.stroke()
 
         // Unflipped, so red (top of the stoplight) has the highest y.
         for (i, level) in [StatusLevel.running, .waiting, .error].enumerated() {
             let rect = NSRect(
-                x: lampX, y: 2.9 + CGFloat(i) * 6.2, width: lampSize, height: lampSize)
+                x: lampX, y: lampFirstY + CGFloat(i) * lampPitch,
+                width: lampSize, height: lampSize)
             if (counts[level] ?? 0) > 0 {
                 level.color.setFill()
                 NSBezierPath(ovalIn: rect).fill()

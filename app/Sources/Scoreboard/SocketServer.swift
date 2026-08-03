@@ -23,8 +23,13 @@ final class SocketServer {
     }
 
     func start() throws {
+        // 0700: the directory is the real access control. It also covers
+        // state.json and hook.log, which name every project you work in.
         try FileManager.default.createDirectory(
-            atPath: Paths.stateDir, withIntermediateDirectories: true)
+            atPath: Paths.stateDir, withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700])
+        try? FileManager.default.setAttributes(
+            [.posixPermissions: 0o700], ofItemAtPath: Paths.stateDir)
         // Stale socket from a previous instance: older instances of our
         // bundle id were terminated at launch, so it is safely ours.
         unlink(Paths.socket)
@@ -41,11 +46,17 @@ final class SocketServer {
                 strlcpy(dest, Paths.socket, maxLen + 1)
             }
         }
+        // bind() creates the socket file with the process umask, so chmod
+        // afterwards leaves a window where anyone could connect. Clamp the
+        // umask across the bind instead, so it is never group/world
+        // accessible even for an instant.
+        let previousMask = umask(0o077)
         let bound = withUnsafePointer(to: &addr) { ptr in
             ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sa in
                 bind(listenFD, sa, socklen_t(MemoryLayout<sockaddr_un>.size))
             }
         }
+        umask(previousMask)
         guard bound == 0, listen(listenFD, 16) == 0 else {
             close(listenFD)
             throw Errno("bind/listen")
