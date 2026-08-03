@@ -119,6 +119,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return true
     }
 
+    @objc private func showAbout(_ sender: NSMenuItem) {
+        let version =
+            Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+            ?? "unknown"
+        let alert = NSAlert()
+        alert.messageText = "Scoreboard \(version)"
+        alert.informativeText = """
+            A menu bar scoreboard for your Claude Code sessions.
+
+            Claude Code hooks report every state change, so the stoplight \
+            shows what needs you: green is working, yellow is waiting on an \
+            answer or a permission, red is an error. Click any session to \
+            jump straight to its terminal tab.
+            """
+        alert.alertStyle = .informational
+        // The board's own glyph, all lamps lit, rather than a generic icon.
+        alert.icon = iconImage(
+            counts: [.running: 1, .waiting: 1, .error: 1], badge: nil, height: 96)
+        alert.addButton(withTitle: "OK")
+        alert.addButton(withTitle: "GitHub")
+        // An accessory app has no windows to bring forward, so the modal
+        // would otherwise open behind whatever you were looking at.
+        NSApp.activate(ignoringOtherApps: true)
+        if alert.runModal() == .alertSecondButtonReturn,
+            let url = URL(string: "https://github.com/acheris-labs/agent-scoreboard")
+        {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
     @objc private func toggleQuitWhenEmpty(_ sender: NSMenuItem) {
         UserDefaults.standard.set(!quitWhenEmpty, forKey: Self.quitWhenEmptyKey)
         writeAutostartMarker()
@@ -257,6 +287,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         loginItem.target = self
         loginItem.state = login.isEnabled ? .on : .off
         menu.addItem(loginItem)
+
+        let aboutItem = NSMenuItem(
+            title: "About Scoreboard", action: #selector(showAbout(_:)), keyEquivalent: "")
+        aboutItem.target = self
+        menu.addItem(aboutItem)
 
         menu.addItem(
             NSMenuItem(

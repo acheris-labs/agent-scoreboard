@@ -75,12 +75,23 @@ func statusItemImage(mode: IconMode, counts: [StatusLevel: Int]) -> NSImage {
 }
 
 @MainActor
-private func iconImage(
-    counts: [StatusLevel: Int], badge: (level: StatusLevel, count: Int)?
+func iconImage(
+    counts: [StatusLevel: Int], badge: (level: StatusLevel, count: Int)?,
+    height: CGFloat? = nil
 ) -> NSImage {
     let anyLit = counts.values.contains { $0 > 0 }
-    let size = badge == nil ? stoplightIconSize : badgeIconSize
-    let image = NSImage(size: size, flipped: false) { _ in
+    var size = badge == nil ? stoplightIconSize : badgeIconSize
+    if let height {
+        size = NSSize(width: size.width * height / size.height, height: height)
+    }
+    let image = NSImage(size: size, flipped: false) { rect in
+        // Geometry below is written for a 22pt canvas; scale to whatever
+        // canvas we were handed so the same drawing serves the menu bar and
+        // the About dialog.
+        let transform = NSAffineTransform()
+        transform.scale(by: rect.height / stoplightIconSize.height)
+        transform.concat()
+
         let outline: NSColor = anyLit ? .labelColor : .black
 
         let housing = NSBezierPath(

@@ -158,6 +158,11 @@ public enum Settings {
         return removed
     }
 
+    /// How many timestamped backups to keep. `brew upgrade` is internally an
+    /// uninstall plus an install, so hooks are removed and re-added on every
+    /// upgrade; without pruning these would accumulate forever.
+    public static let backupsKept = 5
+
     /// Back up the byte-exact original, then write atomically.
     @discardableResult
     static func write(_ path: String, _ settings: [String: Any]) throws -> String? {
@@ -170,6 +175,7 @@ public enum Settings {
             backup = "\(path).backup-\(stamp)"
             try? manager.removeItem(atPath: backup!)
             try manager.copyItem(atPath: path, toPath: backup!)
+            pruneBackups(path)
         }
         let data = try JSONSerialization.data(
             withJSONObject: settings, options: [.prettyPrinted, .sortedKeys])
@@ -181,5 +187,19 @@ public enum Settings {
         _ = try manager.replaceItemAt(
             URL(fileURLWithPath: path), withItemAt: URL(fileURLWithPath: tmp))
         return backup
+    }
+
+    /// Keep only the newest `backupsKept` backups of this settings file. The
+    /// timestamp in the name sorts lexicographically, so no stat calls.
+    static func pruneBackups(_ path: String) {
+        let manager = FileManager.default
+        let directory = (path as NSString).deletingLastPathComponent
+        let prefix = (path as NSString).lastPathComponent + ".backup-"
+        guard let names = try? manager.contentsOfDirectory(atPath: directory) else { return }
+        let backups = names.filter { $0.hasPrefix(prefix) }.sorted()
+        guard backups.count > backupsKept else { return }
+        for stale in backups.dropLast(backupsKept) {
+            try? manager.removeItem(atPath: (directory as NSString).appendingPathComponent(stale))
+        }
     }
 }

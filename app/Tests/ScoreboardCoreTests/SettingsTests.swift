@@ -147,6 +147,25 @@ final class SettingsTests: XCTestCase {
         XCTAssertEqual(restored, original)
     }
 
+    // brew upgrade is uninstall + install, so hooks churn on every upgrade.
+    // Backups must not accumulate forever.
+    func testBackupsArePruned() throws {
+        try write(["model": "opus"])
+        for n in 1...7 {
+            let name = String(format: "settings.json.backup-20260101T0000%02d", n)
+            try "old-\(n)".write(
+                to: dir.appendingPathComponent(name), atomically: true, encoding: .utf8)
+        }
+        // A write creates one more, then prunes to the cap.
+        try Settings.merge(path)
+        let backups = try FileManager.default.contentsOfDirectory(atPath: dir.path)
+            .filter { $0.hasPrefix("settings.json.backup-") }.sorted()
+        XCTAssertEqual(backups.count, Settings.backupsKept)
+        // The newest survive: the oldest stamps are the ones dropped.
+        XCTAssertFalse(backups.contains("settings.json.backup-20260101T000001"))
+        XCTAssertTrue(backups.contains("settings.json.backup-20260101T000007"))
+    }
+
     func testEmptyFileTreatedAsEmptyObject() throws {
         try Data().write(to: URL(fileURLWithPath: path))
         XCTAssertEqual(try Settings.merge(path).sorted(), Settings.allEvents.sorted())
