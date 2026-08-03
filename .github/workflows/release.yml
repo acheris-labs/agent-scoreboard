@@ -179,7 +179,9 @@ jobs:
             "${{ steps.artifacts.outputs.sha }}"
 
   # Regenerate the cask in acheris-labs/homebrew-tools from the notarized zip.
-  # Needs a PAT: the default GITHUB_TOKEN cannot write to another repository.
+  # The default GITHUB_TOKEN cannot write to another repository, so this
+  # pushes over SSH with a deploy key whose write access is scoped to the tap
+  # and nothing else.
   brew:
     needs: release
     runs-on: ubuntu-latest
@@ -200,22 +202,29 @@ jobs:
       - name: Update cask
         env:
           GH_TOKEN: ${{ github.token }}
-          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+          TAP_SSH_KEY: ${{ secrets.HOMEBREW_TAP_SSH_KEY }}
         run: |
           set -euo pipefail
-          # Without the tap token the release itself is still fine - the cask
+          # Without the deploy key the release itself is still fine - the cask
           # just has to be pushed by hand. Warn rather than fail the run.
-          if [ -z "${TAP_TOKEN:-}" ]; then
-            echo "::warning::HOMEBREW_TAP_GITHUB_TOKEN not set; skipping cask update"
+          if [ -z "${TAP_SSH_KEY:-}" ]; then
+            echo "::warning::HOMEBREW_TAP_SSH_KEY not set; skipping cask update"
             exit 0
           fi
+
           export VERSION="${{ steps.v.outputs.version }}"
           export SHA_APP="$(gh release download "${{ steps.v.outputs.tag }}" \
             --pattern "Scoreboard-${VERSION}.zip.sha256" -O - | cut -d' ' -f1)"
           test -n "$SHA_APP" || { echo "could not read zip sha256"; exit 1; }
           envsubst < packaging/scoreboard-cask.rb.tmpl > scoreboard.rb
 
-          git clone "https://x-access-token:${TAP_TOKEN}@github.com/acheris-labs/homebrew-tools.git" tap
+          mkdir -p ~/.ssh
+          printf '%s\n' "$TAP_SSH_KEY" > ~/.ssh/tap_key
+          chmod 600 ~/.ssh/tap_key
+          ssh-keyscan -t ed25519 github.com >> ~/.ssh/known_hosts 2>/dev/null
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/tap_key -o IdentitiesOnly=yes"
+
+          git clone git@github.com:acheris-labs/homebrew-tools.git tap
           mkdir -p tap/Casks
           cp scoreboard.rb tap/Casks/scoreboard.rb
           cd tap

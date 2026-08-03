@@ -84,6 +84,18 @@ Scoreboard.app ── SessionStore ──▶ menu rows + urgency dot
 - `cli/` — Python (uv, stdlib-only): `init` / `hook` / `state`
 - `app/` — Swift (SwiftPM + AppKit): socket listener, session store, menu
 
+## Releasing
+
+```sh
+git tag v1.2.3 && git push origin v1.2.3
+```
+
+That is the whole process. CI signs and notarizes the app, publishes a
+stapled zip and DMG to a GitHub release, and pushes the regenerated cask to
+[acheris-labs/homebrew-tools](https://github.com/acheris-labs/homebrew-tools)
+so `brew upgrade --cask scoreboard` picks it up. Add a `## [1.2.3]` section
+to `CHANGELOG.md` to control the release notes; otherwise they are generated.
+
 ## Develop
 
 ```sh
