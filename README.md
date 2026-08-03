@@ -40,12 +40,12 @@ reaps it on sleep. Two more menu settings:
 ```sh
 brew tap acheris-labs/tools
 brew install --cask acheris-labs/tools/scoreboard
-scoreboard init   # registers Claude Code hooks in ~/.claude/settings.json
 ```
 
-One artifact installs everything: the app bundle carries the CLI, which the
-cask symlinks onto your PATH. `scoreboard init` is the only per-machine step,
-since the hooks live in that machine's own `~/.claude/settings.json`.
+That is the whole setup. One artifact installs everything: the app bundle
+carries the CLI, which the cask symlinks onto your PATH, and the cask
+registers the Claude Code hooks in `~/.claude/settings.json` (backing it up
+first) and opens the app. Uninstalling unregisters them again.
 
 Upgrading needs `brew update` first — on its own, `brew upgrade` checks a
 stale copy of the tap and reports the latest version is already installed:
@@ -63,7 +63,11 @@ backup of settings.json is written before any change).
 
 ## Commands
 
-- `scoreboard init [--remove]` — register/unregister Claude Code hooks
+- `scoreboard init [--remove]` — register/unregister Claude Code hooks. The
+  cask runs this for you on install and uninstall, which is safe because it is
+  idempotent: re-running against an already-registered `settings.json` writes
+  nothing. Every real change is preceded by a timestamped backup (the newest
+  five are kept).
 - `scoreboard state` — print the board
 - `scoreboard refresh` — re-link sessions to terminals. Inside a session
   (`! scoreboard refresh`) it captures the current tab directly; outside, it
