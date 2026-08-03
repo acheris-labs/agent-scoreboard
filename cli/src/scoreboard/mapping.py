@@ -60,6 +60,12 @@ def map_hook(payload, detect_adapter=terminals.detect) -> dict | None:
         if payload.get("tool_name") != "AskUserQuestion":
             return None
         state, reason = "waiting", "question"
+    elif name == "PostToolUse":
+        # Answering a question fires no hook of its own, so the session
+        # would sit on "waiting" until the next Stop. This is the resume.
+        if payload.get("tool_name") != "AskUserQuestion":
+            return None
+        state, reason = "running", "question_answered"
     elif name == "StopFailure":
         state, reason = "error", str(payload.get("error_type") or "stop_failure")
     elif name == "SessionEnd":

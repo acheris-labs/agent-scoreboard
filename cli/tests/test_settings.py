@@ -26,15 +26,16 @@ class SettingsTests(unittest.TestCase):
                 data["hooks"][event],
                 [{"hooks": [{"type": "command", "command": "scoreboard hook"}]}],
             )
-        self.assertEqual(
-            data["hooks"]["PreToolUse"],
-            [
-                {
-                    "matcher": "AskUserQuestion",
-                    "hooks": [{"type": "command", "command": "scoreboard hook"}],
-                }
-            ],
-        )
+        for event in settings.MATCHED_EVENTS:
+            self.assertEqual(
+                data["hooks"][event],
+                [
+                    {
+                        "matcher": "AskUserQuestion",
+                        "hooks": [{"type": "command", "command": "scoreboard hook"}],
+                    }
+                ],
+            )
 
     def test_merge_preserves_user_hooks(self):
         original = {

@@ -20,7 +20,8 @@ PLAIN_EVENTS = [
     "SessionEnd",
     "PermissionRequest",
 ]
-ALL_EVENTS = PLAIN_EVENTS + ["PreToolUse"]
+MATCHED_EVENTS = ["PreToolUse", "PostToolUse"]
+ALL_EVENTS = PLAIN_EVENTS + MATCHED_EVENTS
 
 
 def _is_ours(hook: dict) -> bool:
@@ -48,7 +49,7 @@ def _installed(settings: dict, event: str) -> bool:
     for entry in entries:
         if not _entry_has_ours(entry):
             continue
-        if event == "PreToolUse" and entry.get("matcher") != ASK_MATCHER:
+        if event in MATCHED_EVENTS and entry.get("matcher") != ASK_MATCHER:
             continue
         return True
     return False
@@ -86,7 +87,7 @@ def merge(settings_path: str) -> list[str]:
         if _installed(settings, event):
             continue
         entry = {"hooks": [{"type": "command", "command": HOOK_COMMAND}]}
-        if event == "PreToolUse":
+        if event in MATCHED_EVENTS:
             entry = {"matcher": ASK_MATCHER, **entry}
         hooks.setdefault(event, []).append(entry)
         added.append(event)

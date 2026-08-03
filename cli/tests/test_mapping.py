@@ -75,6 +75,13 @@ class MapHookTests(unittest.TestCase):
     def test_pre_tool_use_other_tools_ignored(self):
         self.assertIsNone(map_hook(hook("PreToolUse", tool_name="Bash")))
 
+    def test_post_tool_use_ask_question_resumes(self):
+        payload = hook("PostToolUse", tool_name="AskUserQuestion")
+        self.assert_state(payload, "running", "question_answered")
+
+    def test_post_tool_use_other_tools_ignored(self):
+        self.assertIsNone(map_hook(hook("PostToolUse", tool_name="Bash")))
+
     def test_stop_failure(self):
         self.assert_state(hook("StopFailure"), "error")
 
