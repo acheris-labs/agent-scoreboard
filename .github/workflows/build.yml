@@ -1,0 +1,37 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain versions
+        run: |
+          sw_vers
+          swift --version
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: CLI tests
+        run: cd cli && uv run python -m unittest discover -s tests -v
+
+      - name: Build app (ad-hoc, Release)
+        run: make -C app app
+
+      - name: Verify ad-hoc signature
+        run: codesign -dv app/build/Scoreboard.app 2>&1
+
+      - name: Upload Scoreboard.app
+        uses: actions/upload-artifact@v4
+        with:
+          name: Scoreboard.app
+          path: app/build/Scoreboard.app
+          if-no-files-found: error
