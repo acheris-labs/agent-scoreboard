@@ -18,7 +18,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // With no sessions on the board, quit after this long. Generous so a
     // session that is starting up never races the timer.
     private var emptyTimer: Timer?
-    private static let emptyQuitDelay: TimeInterval = 60
+
+    // Hide the icon once no lamp has been lit for a while. Separate from
+    // quitWhenEmpty: that one is about an empty board, this one is about a
+    // board where nothing wants you.
+    private var idleTimer: Timer?
+    private static let hideWhenIdleKey = "hideWhenIdle"
+    private static let idleHideDelayKey = "hideWhenIdleSeconds"
+    private static let emptyQuitDelayKey = "quitWhenEmptySeconds"
+    private static let defaultDelay = 60
+
+    // Both delays are user-set from menu sliders. 0 is a real value ("at
+    // once"), so absence has to be tested rather than read as zero.
+    private func delay(forKey key: String) -> TimeInterval {
+        guard let stored = UserDefaults.standard.object(forKey: key) as? Int else {
+            return TimeInterval(Self.defaultDelay)
+        }
+        return TimeInterval(
+            min(max(stored, DelaySliderView.minSeconds), DelaySliderView.maxSeconds))
+    }
+
+    // A hidden icon hides the menu that turns hiding off. Re-opening the app
+    // forces it back until the menu is next dismissed.
+    private var forceVisible = false
+
+    private var hideWhenIdle: Bool {
+        UserDefaults.standard.bool(forKey: Self.hideWhenIdleKey)
+    }
     private static let quitWhenEmptyKey = "quitWhenEmpty"
 
     private var quitWhenEmpty: Bool {
@@ -114,6 +140,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func applicationShouldHandleReopen(
         _ sender: NSApplication, hasVisibleWindows: Bool
     ) -> Bool {
+        // Also the way back from Hide When Idle: `open -a Scoreboard` brings
+        // the icon out of hiding long enough to use the menu.
+        forceVisible = true
         statusItem.isVisible = true
         restoreStatusItemIfNeeded()
         return true
@@ -166,6 +195,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    // A lit lamp shows the icon at once - if something wants you, it must be
+    // there immediately. Going quiet only starts a timer, so the icon does not
+    // flicker away between a session finishing and the next prompt.
+    private func updateIdleVisibility(anyLit: Bool) {
+        idleTimer?.invalidate()
+        idleTimer = nil
+        guard hideWhenIdle, !forceVisible else {
+            statusItem.isVisible = true
+            return
+        }
+        if anyLit {
+            statusItem.isVisible = true
+            return
+        }
+        idleTimer = Timer.scheduledTimer(
+            withTimeInterval: delay(forKey: Self.idleHideDelayKey), repeats: false
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.hideWhenIdle, !self.forceVisible,
+                    !self.menuIsTracking
+                else { return }
+                self.statusItem.isVisible = false
+            }
+        }
+    }
+
+    // Only shown while its checkbox is on, so the menu stays short when the
+    // feature is off. Dragging re-arms the timer at the new delay rather than
+    // waiting for the next session event.
+    private func delaySlider(titled title: String, key: String) -> NSMenuItem {
+        let item = NSMenuItem()
+        item.view = DelaySliderView(
+            title: title, initialValue: Int(delay(forKey: key))
+        ) { [weak self] seconds in
+            UserDefaults.standard.set(seconds, forKey: key)
+            self?.refresh()
+        }
+        return item
+    }
+
+    @objc private func toggleHideWhenIdle(_ sender: NSMenuItem) {
+        UserDefaults.standard.set(!hideWhenIdle, forKey: Self.hideWhenIdleKey)
+        refresh()
+    }
+
     // Arm a one-shot quit whenever the board is empty; any session cancels it.
     private func updateEmptyTimer() {
         emptyTimer?.invalidate()
@@ -174,13 +248,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // gets switched off. menuDidClose re-arms.
         guard quitWhenEmpty, store.sessions.isEmpty, !menuIsTracking else { return }
         emptyTimer = Timer.scheduledTimer(
-            withTimeInterval: Self.emptyQuitDelay, repeats: false
+            withTimeInterval: delay(forKey: Self.emptyQuitDelayKey), repeats: false
         ) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self, self.quitWhenEmpty, self.store.sessions.isEmpty,
                     !self.menuIsTracking
                 else { return }
-                NSLog("scoreboard: no sessions for \(Self.emptyQuitDelay)s, quitting")
+                NSLog("scoreboard: board empty, quitting")
                 NSApp.terminate(nil)
             }
         }
@@ -211,6 +285,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         statusItem.button?.image = statusItemImage(counts: counts)
         updateEmptyTimer()
+        updateIdleVisibility(anyLit: !counts.isEmpty)
 
         if menuIsTracking {
             menuRebuildDeferred = true
@@ -247,15 +322,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         menu.addItem(.separator())
 
+        let hideWhenIdleItem = NSMenuItem(
+            title: "Hide When Idle", action: #selector(toggleHideWhenIdle(_:)), keyEquivalent: "")
+        hideWhenIdleItem.target = self
+        hideWhenIdleItem.state = hideWhenIdle ? .on : .off
+        hideWhenIdleItem.toolTip =
+            "Remove the icon from the menu bar once no session is running, waiting "
+            + "or in error. Run `open -a Scoreboard` to bring it back."
+        menu.addItem(hideWhenIdleItem)
+        if hideWhenIdle { menu.addItem(delaySlider(titled: "Hide after", key: Self.idleHideDelayKey)) }
+
         let quitWhenEmptyItem = NSMenuItem(
             title: "Quit When No Sessions", action: #selector(toggleQuitWhenEmpty(_:)),
             keyEquivalent: "")
         quitWhenEmptyItem.target = self
         quitWhenEmptyItem.state = quitWhenEmpty ? .on : .off
         quitWhenEmptyItem.toolTip =
-            "Quit Scoreboard after a minute with no Claude sessions. "
+            "Quit Scoreboard once there are no Claude sessions at all. "
             + "It starts itself again when the next session registers."
         menu.addItem(quitWhenEmptyItem)
+        if quitWhenEmpty {
+            menu.addItem(delaySlider(titled: "Quit after", key: Self.emptyQuitDelayKey))
+        }
 
         let loginItem = NSMenuItem(
             title: "Start at Login", action: #selector(toggleLoginItem(_:)), keyEquivalent: "")
@@ -306,8 +394,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func menuDidClose(_ menu: NSMenu) {
         menuIsTracking = false
-        // Quitting was suppressed while the menu was open; re-arm now.
+        // The forced reveal lasts only until the user has had their look.
+        forceVisible = false
+        // Quitting and hiding were suppressed while the menu was open.
         updateEmptyTimer()
+        refresh()
         if menuRebuildDeferred {
             menuRebuildDeferred = false
             // Rebuild after tracking fully unwinds.
