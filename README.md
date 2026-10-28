@@ -67,22 +67,21 @@ backup of settings.json is written before any change).
   nothing. Every real change is preceded by a timestamped backup (the newest
   five are kept).
 - `scoreboard state` — print the board
-- `scoreboard refresh` — re-link sessions to terminals. Inside a session
-  (`! scoreboard refresh`) it captures the current tab directly; outside, it
-  matches origin-less sessions to terminals by unique working directory.
 - `scoreboard rename <name> [--session <id-prefix>]` — rename a session's
   menu row; the name is pinned so hook auto-titles never overwrite it.
 
 ## Jump-to-tab
 
-The terminal a session lives in is captured once, at `SessionStart`, via the
-adapter for the current terminal app (`cli/src/scoreboard/terminals/`). The
-event carries an opaque `origin` (`{"kind": "ghostty", "terminal_id": ...}`)
-that only the matching Swift adapter (`app/Sources/Scoreboard/*Adapter.swift`)
-interprets — clicking a row focuses that exact window + tab, falling back to
-working-directory match, then plain app activation. First click prompts once
-for Automation permission (Scoreboard → Ghostty). Adding another terminal app
-is one Python module + one Swift adapter file.
+Requires Ghostty 1.4 or later. The hook only records which terminal app a
+session runs in, read from `TERM_PROGRAM` (`{"kind": "ghostty"}`); nothing is
+captured from the screen. When you click a row, the matching adapter
+(`app/Sources/Scoreboard/*Adapter.swift`) looks up the session process's tty
+and focuses the Ghostty terminal with that tty, so it lands on the right window
+and tab no matter what was focused when the session started. It falls back to
+a working-directory match (e.g. claude inside tmux), then plain app activation.
+First click prompts once for Automation permission (Scoreboard → Ghostty).
+Adding another terminal app is one case in
+`app/Sources/ScoreboardCore/TerminalCapture.swift` plus one Swift adapter file.
 
 ## How it works
 

@@ -366,7 +366,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let sessionId = sender.representedObject as? String,
             let session = store.sessions[sessionId]
         else { return }
-        TerminalAdapters.jump(origin: session.origin, cwd: session.cwd)
+        TerminalAdapters.jump(origin: session.origin, pid: session.pid, cwd: session.cwd)
     }
 
     private func dotImage(for state: SessionState) -> NSImage {

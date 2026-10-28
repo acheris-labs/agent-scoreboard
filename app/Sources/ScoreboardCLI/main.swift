@@ -1,7 +1,7 @@
 import Foundation
 import ScoreboardCore
 
-// scoreboard CLI: init / hook / state / refresh / rename.
+// scoreboard CLI: init / hook / state / rename.
 //
 // Hand-rolled argument parsing rather than swift-argument-parser: this binary
 // runs on every Claude hook, so it stays dependency-free and fast to start.
@@ -14,7 +14,6 @@ func usage() -> Never {
           init [--remove]              register (or unregister) Claude Code hooks
           hook                         hook entrypoint, reads JSON on stdin
           state                        print the board
-          refresh                      re-link sessions to their terminal tabs
           rename <name> [--session ID] rename a session's menu row
         """)
     exit(2)
@@ -72,7 +71,6 @@ struct SnapshotSession {
     let cwd: String
     let pid: Int
     let updatedAt: Double
-    let hasOrigin: Bool
 }
 
 func readSessions() -> [SnapshotSession]? {
@@ -87,8 +85,7 @@ func readSessions() -> [SnapshotSession]? {
             title: $0["title"] as? String ?? "?",
             cwd: $0["cwd"] as? String ?? "",
             pid: $0["pid"] as? Int ?? 0,
-            updatedAt: $0["updatedAt"] as? Double ?? 0,
-            hasOrigin: $0["origin"] != nil)
+            updatedAt: $0["updatedAt"] as? Double ?? 0)
     }
 }
 
@@ -116,54 +113,6 @@ func cmdState() -> Int32 {
         print(
             "\(pad(s.state, 8)) \(pad(s.title, 24)) pid=\(pad(String(s.pid), 7)) "
                 + "age=\(pad(age(s.updatedAt), 6)) \(s.sessionID)")
-    }
-    return 0
-}
-
-// MARK: - refresh
-
-func cmdRefresh() -> Int32 {
-    guard let sessions = readSessions() else {
-        print("no snapshot — is the Scoreboard app running?")
-        return 1
-    }
-    let env = ProcessInfo.processInfo.environment
-    if let sessionID = env["CLAUDE_CODE_SESSION_ID"], !sessionID.isEmpty {
-        // Run from inside the session's tab: capture this terminal directly.
-        guard let adapter = TerminalCapture.detect() else {
-            print("unsupported terminal (no adapter)")
-            return 1
-        }
-        guard let origin = adapter.captureOrigin() else {
-            print("could not capture terminal (is the terminal focused?)")
-            return 1
-        }
-        SocketClient.send([
-            "v": 1, "session_id": sessionID, "origin": origin,
-            "ts": Date().timeIntervalSince1970,
-        ])
-        print("linked session to \(origin["kind"] ?? "terminal") terminal")
-        return 0
-    }
-    // Outside a session: match origin-less sessions to terminals by unique cwd.
-    let origins = TerminalCapture.allOrigins()
-    var fixed = 0
-    for session in sessions where !session.hasOrigin {
-        let matches = origins.filter { $0.cwd == session.cwd }
-        let label = "\(session.title) (\(session.sessionID.prefix(8)))"
-        if matches.count == 1 {
-            SocketClient.send([
-                "v": 1, "session_id": session.sessionID, "origin": matches[0].origin,
-                "ts": Date().timeIntervalSince1970,
-            ])
-            print("linked   \(label)")
-            fixed += 1
-        } else {
-            print("skipped  \(label): \(matches.isEmpty ? "no terminal match" : "ambiguous cwd")")
-        }
-    }
-    if fixed == 0 && sessions.allSatisfy({ $0.hasOrigin }) {
-        print("all sessions already linked")
     }
     return 0
 }
@@ -212,8 +161,6 @@ case "init":
     exit(cmdInit(remove: args.contains("--remove")))
 case "state":
     exit(cmdState())
-case "refresh":
-    exit(cmdRefresh())
 case "rename":
     let positional = args.dropFirst().filter { !$0.hasPrefix("--") }
     guard let name = positional.first else { usage() }

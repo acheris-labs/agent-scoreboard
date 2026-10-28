@@ -43,9 +43,9 @@ final class GhosttyScriptTests: XCTestCase {
     // closed.
     func testInjectionPayloadCannotCloseTheLiteral() {
         let payload = "x\" & (do shell script \"touch /tmp/PWNED\") & \""
-        assertContributesNoQuotes(payload) { GhosttyScript.focus(terminalID: $0) }
+        assertContributesNoQuotes(payload) { GhosttyScript.focus(tty: $0) }
         // The command survives only as inert text, never as live syntax.
-        XCTAssertFalse(GhosttyScript.focus(terminalID: payload).contains("do shell script \""))
+        XCTAssertFalse(GhosttyScript.focus(tty: payload).contains("do shell script \""))
     }
 
     func testInjectionViaWorkingDirectoryCannotCloseTheLiteral() {
@@ -56,7 +56,7 @@ final class GhosttyScriptTests: XCTestCase {
     // A trailing backslash is the classic escape-the-escape attack: if it were
     // not doubled it would consume the template's own closing quote.
     func testTrailingBackslashCannotEscapeTheClosingQuote() {
-        assertContributesNoQuotes("abc\\") { GhosttyScript.focus(terminalID: $0) }
+        assertContributesNoQuotes("abc\\") { GhosttyScript.focus(tty: $0) }
     }
 
     // Filenames may contain newlines. That yields no match rather than a
