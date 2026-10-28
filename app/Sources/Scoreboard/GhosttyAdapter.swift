@@ -9,14 +9,13 @@ import ScoreboardCore
 final class GhosttyAdapter: TerminalAdapter {
     static let kind = "ghostty"
 
-    func jump(origin: [String: String], cwd: String) -> Bool {
-        if let terminalId = origin["terminal_id"], !terminalId.isEmpty,
-            run(script: GhosttyScript.focus(terminalID: terminalId))
-        {
+    func jump(pid: Int32, cwd: String) -> Bool {
+        // The session's tty names its tab exactly (Ghostty 1.4+).
+        if let tty = ProcessTTY.path(of: pid), run(script: GhosttyScript.focus(tty: tty)) {
             return true
         }
-        // Terminal gone or origin never captured: best-effort cwd match,
-        // then plain app activation so the click always does something.
+        // No tty (e.g. claude inside tmux): best-effort cwd match, then plain
+        // app activation so the click always does something.
         if !cwd.isEmpty, run(script: GhosttyScript.focus(workingDirectory: cwd)) {
             return true
         }

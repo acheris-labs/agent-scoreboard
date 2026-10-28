@@ -22,7 +22,7 @@ struct Session: Codable {
     var cwd: String
     var pid: Int32
     var updatedAt: Double  // epoch seconds, matches the CLI's snapshot reader
-    var origin: [String: String]?  // opaque terminal identity, adapter-interpreted
+    var origin: [String: String]?  // terminal app, e.g. ["kind": "ghostty"]
     var titlePinned: Bool?  // user renamed; hook auto-titles must not clobber
 }
 
@@ -43,10 +43,9 @@ final class SessionStore {
         let eventTitle = (event["title"] as? String).flatMap { $0.isEmpty ? nil : $0 }
 
         guard let stateRaw = event["state"] as? String else {
-            // Stateless event = metadata update (origin / rename); the
-            // session must already exist.
+            // Stateless event = metadata update (rename); the session
+            // must already exist.
             guard var session = sessions[sessionId] else { return }
-            if let eventOrigin { session.origin = eventOrigin }
             if let eventTitle { session.title = eventTitle }
             if event["title_pinned"] as? Bool == true { session.titlePinned = true }
             sessions[sessionId] = session

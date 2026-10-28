@@ -23,7 +23,7 @@ public enum Mapping {
     /// Returns a scoreboard event for a hook payload, or nil to ignore it.
     public static func mapHook(
         _ payload: [String: Any],
-        captureOrigin: () -> [String: String]? = { TerminalCapture.captureOrigin() },
+        captureOrigin: () -> [String: String]? = { TerminalCapture.origin() },
         parentPID: Int32 = getppid()
     ) -> [String: Any]? {
         guard let sessionID = payload["session_id"] as? String, !sessionID.isEmpty else {
@@ -74,9 +74,8 @@ public enum Mapping {
             "pid": Int(parentPID),
             "ts": Date().timeIntervalSince1970,
         ]
-        // Terminal origin is captured only at SessionStart: the user just
-        // typed `claude` in that tab, so the focused terminal is the session's
-        // home. Later hooks may fire while the user is elsewhere.
+        // The origin only names the terminal app, which never changes for a
+        // session, so SessionStart is enough: the store carries it forward.
         if name == "SessionStart", let origin = captureOrigin() {
             event["origin"] = origin
         }

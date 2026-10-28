@@ -16,10 +16,11 @@ public enum GhosttyScript {
             .replacingOccurrences(of: "\"", with: "\\\"")
     }
 
-    public static func focus(terminalID: String) -> String {
+    /// Needs Ghostty 1.4+, the first version to expose a terminal's tty.
+    public static func focus(tty: String) -> String {
         """
         tell application "Ghostty"
-            focus (first terminal whose id is "\(escape(terminalID))")
+            focus (first terminal whose tty is "\(escape(tty))")
             activate
         end tell
         """
