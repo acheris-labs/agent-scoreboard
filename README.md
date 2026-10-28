@@ -23,14 +23,27 @@ yellow bubble with a 3.
 With every session idle, the icon is a dim outline and the bubble disappears.
 
 The icon keeps its menu bar position across launches and is restored if macOS
-reaps it on sleep. Two more menu settings:
+reaps it on sleep.
 
-- **Quit When No Sessions** (off by default) quits Scoreboard after a minute
-  with an empty board, and the CLI starts it again — in the background,
-  without stealing focus — the moment the next session registers. It waits on
-  *no sessions*, not *all idle*, so it doesn't churn every time Claude
-  finishes a reply, and it never quits while the menu is open.
-- **Start at Login** defaults to on for a fresh install; turn it off and that
+## Settings
+
+**Settings…** in the menu (⌘,) opens a window with:
+
+- **Claude config folders** — the folders whose `settings.json` carries
+  Scoreboard's hooks: `~/.claude`, plus one for each `CLAUDE_CONFIG_DIR` you
+  run Claude with. **+** adds a folder and registers the hooks in it; **−**
+  removes them. Nothing is registered until you add a folder, so the window
+  opens by itself while the list is empty.
+- **Hide when idle** (off by default) removes the icon once no session is
+  running, waiting or in error, after an adjustable delay. `open -a
+  Scoreboard` brings it back.
+- **Quit when no sessions** (off by default) quits Scoreboard after an
+  adjustable delay with an empty board, and the CLI starts it again — in the
+  background, without stealing focus — the moment the next session
+  registers. It waits on *no sessions*, not *all idle*, so it doesn't churn
+  every time Claude finishes a reply, and it never quits while the menu or
+  the Settings window is open.
+- **Start at login** defaults to on for a fresh install; turn it off and that
   choice sticks.
 
 ## Install
@@ -40,10 +53,12 @@ brew tap acheris-labs/tools
 brew install --cask acheris-labs/tools/scoreboard
 ```
 
-That is the whole setup. One artifact installs everything: the app bundle
-carries the CLI, which the cask symlinks onto your PATH, and the cask
-registers the Claude Code hooks in `~/.claude/settings.json` (backing it up
-first) and opens the app. Uninstalling unregisters them again.
+One artifact installs everything: the app bundle carries the CLI, which the
+cask symlinks onto your PATH, and the cask opens the app. Then open
+**Settings…** from the menu and add your Claude config folder(s) — Scoreboard
+registers its hooks there, backing up `settings.json` first. Uninstalling
+removes the hooks from every folder; the list of folders is kept, so an
+upgrade (or a reinstall) puts them back. `brew uninstall --zap` forgets it.
 
 Upgrading needs `brew update` first — on its own, `brew upgrade` checks a
 stale copy of the tap and reports the latest version is already installed:
@@ -53,19 +68,20 @@ brew update && brew upgrade --cask scoreboard
 ```
 
 To build from source instead, use `make install` (app to `~/Applications`,
-CLI via `uv tool install --editable`).
-
-`scoreboard init` is idempotent — re-running prints a per-hook status check.
-`scoreboard init --remove` reverses exactly what it added (a timestamped
-backup of settings.json is written before any change).
+CLI symlinked into `~/.local/bin`).
 
 ## Commands
 
-- `scoreboard init [--remove]` — register/unregister Claude Code hooks. The
-  cask runs this for you on install and uninstall, which is safe because it is
-  idempotent: re-running against an already-registered `settings.json` writes
-  nothing. Every real change is preceded by a timestamped backup (the newest
-  five are kept).
+- `scoreboard init` — register the hooks in `~/.claude` (the same as adding
+  it in Settings) and print a per-hook status check. Idempotent: re-running
+  against an already-registered `settings.json` writes nothing.
+- `scoreboard init --remove` — remove the hooks from every config folder.
+  The cask runs this on uninstall.
+- `scoreboard init --restore` — re-register every remembered folder. The cask
+  runs this on install, which is how `brew upgrade` keeps your folders.
+
+Every change to a `settings.json` is preceded by a timestamped backup (the
+newest five are kept).
 - `scoreboard state` — print the board
 - `scoreboard rename <name> [--session <id-prefix>]` — rename a session's
   menu row; the name is pinned so hook auto-titles never overwrite it.
