@@ -23,33 +23,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // quitWhenEmpty: that one is about an empty board, this one is about a
     // board where nothing wants you.
     private var idleTimer: Timer?
-    private static let hideWhenIdleKey = "hideWhenIdle"
-    private static let idleHideDelayKey = "hideWhenIdleSeconds"
-    private static let emptyQuitDelayKey = "quitWhenEmptySeconds"
-    private static let defaultDelay = 60
 
-    // Both delays are user-set from menu sliders. 0 is a real value ("at
-    // once"), so absence has to be tested rather than read as zero.
-    private func delay(forKey key: String) -> TimeInterval {
-        guard let stored = UserDefaults.standard.object(forKey: key) as? Int else {
-            return TimeInterval(Self.defaultDelay)
-        }
-        return TimeInterval(
-            min(max(stored, DelaySliderView.minSeconds), DelaySliderView.maxSeconds))
-    }
+    private lazy var settings = SettingsWindowController(
+        model: SettingsModel(login: login) { [weak self] in
+            self?.writeAutostartMarker()
+            self?.refresh()
+        })
 
     // A hidden icon hides the menu that turns hiding off. Re-opening the app
     // forces it back until the menu is next dismissed.
     private var forceVisible = false
-
-    private var hideWhenIdle: Bool {
-        UserDefaults.standard.bool(forKey: Self.hideWhenIdleKey)
-    }
-    private static let quitWhenEmptyKey = "quitWhenEmpty"
-
-    private var quitWhenEmpty: Bool {
-        UserDefaults.standard.bool(forKey: Self.quitWhenEmptyKey)
-    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -92,7 +75,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let message = login.bootstrapDefaultIfNeeded() { NSLog("scoreboard: \(message)") }
         // Keep the marker honest even if the setting was changed elsewhere.
         writeAutostartMarker()
+        installMainMenu()
+        // Closing Settings is when a suppressed quit-when-empty may re-arm.
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                DispatchQueue.main.async { self?.refresh() }
+            }
+        }
         refresh()
+
+        // Nothing is registered on install: until a config folder is added,
+        // no session can ever reach the board, so open Settings to say so.
+        let folders = ConfigFolders.standard
+        folders.migrateIfNeeded()
+        if folders.list().isEmpty { settings.show() }
+    }
+
+    // An accessory app shows no menu bar, but its main menu still handles
+    // key equivalents while one of its windows is key: this is what makes
+    // Cmd-W close Settings.
+    private func installMainMenu() {
+        let windowMenu = NSMenu(title: "Window")
+        windowMenu.addItem(
+            NSMenuItem(
+                title: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w"))
+        let windowItem = NSMenuItem()
+        windowItem.submenu = windowMenu
+        let mainMenu = NSMenu()
+        mainMenu.addItem(windowItem)
+        NSApp.mainMenu = mainMenu
+    }
+
+    @objc private func showSettings(_ sender: Any?) {
+        settings.show()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -172,18 +189,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    @objc private func toggleQuitWhenEmpty(_ sender: NSMenuItem) {
-        UserDefaults.standard.set(!quitWhenEmpty, forKey: Self.quitWhenEmptyKey)
-        writeAutostartMarker()
-        refresh()
-    }
-
     // The marker is the CLI's permission to relaunch us. A file rather than a
     // `defaults read`: no subprocess on the hook path, and no risk of reading
     // a value cfprefsd has not flushed yet.
     private func writeAutostartMarker() {
         do {
-            if quitWhenEmpty {
+            if Preferences.quitWhenEmpty {
                 try FileManager.default.createDirectory(
                     atPath: Paths.stateDir, withIntermediateDirectories: true)
                 try Data().write(to: URL(fileURLWithPath: Paths.autostart))
@@ -201,7 +212,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func updateIdleVisibility(anyLit: Bool) {
         idleTimer?.invalidate()
         idleTimer = nil
-        guard hideWhenIdle, !forceVisible else {
+        guard Preferences.hideWhenIdle, !forceVisible else {
             statusItem.isVisible = true
             return
         }
@@ -210,10 +221,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
         idleTimer = Timer.scheduledTimer(
-            withTimeInterval: delay(forKey: Self.idleHideDelayKey), repeats: false
+            withTimeInterval: TimeInterval(Preferences.delay(forKey: Preferences.idleHideDelayKey)),
+            repeats: false
         ) { [weak self] _ in
             MainActor.assumeIsolated {
-                guard let self, self.hideWhenIdle, !self.forceVisible,
+                guard let self, Preferences.hideWhenIdle, !self.forceVisible,
                     !self.menuIsTracking
                 else { return }
                 self.statusItem.isVisible = false
@@ -221,48 +233,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    // Only shown while its checkbox is on, so the menu stays short when the
-    // feature is off. Dragging re-arms the timer at the new delay rather than
-    // waiting for the next session event.
-    private func delaySlider(titled title: String, key: String) -> NSMenuItem {
-        let item = NSMenuItem()
-        item.view = DelaySliderView(
-            title: title, initialValue: Int(delay(forKey: key))
-        ) { [weak self] seconds in
-            UserDefaults.standard.set(seconds, forKey: key)
-            self?.refresh()
-        }
-        return item
-    }
-
-    @objc private func toggleHideWhenIdle(_ sender: NSMenuItem) {
-        UserDefaults.standard.set(!hideWhenIdle, forKey: Self.hideWhenIdleKey)
-        refresh()
-    }
-
     // Arm a one-shot quit whenever the board is empty; any session cancels it.
     private func updateEmptyTimer() {
         emptyTimer?.invalidate()
         emptyTimer = nil
-        // Never quit out from under an open menu - that is where the setting
-        // gets switched off. menuDidClose re-arms.
-        guard quitWhenEmpty, store.sessions.isEmpty, !menuIsTracking else { return }
+        // Never quit out from under an open menu or Settings window - that is
+        // where the setting gets switched off. Closing either re-arms.
+        guard Preferences.quitWhenEmpty, store.sessions.isEmpty, !menuIsTracking,
+            !settings.isVisible
+        else { return }
         emptyTimer = Timer.scheduledTimer(
-            withTimeInterval: delay(forKey: Self.emptyQuitDelayKey), repeats: false
+            withTimeInterval: TimeInterval(Preferences.delay(forKey: Preferences.emptyQuitDelayKey)),
+            repeats: false
         ) { [weak self] _ in
             MainActor.assumeIsolated {
-                guard let self, self.quitWhenEmpty, self.store.sessions.isEmpty,
-                    !self.menuIsTracking
+                guard let self, Preferences.quitWhenEmpty, self.store.sessions.isEmpty,
+                    !self.menuIsTracking, !self.settings.isVisible
                 else { return }
                 NSLog("scoreboard: board empty, quitting")
                 NSApp.terminate(nil)
             }
         }
-    }
-
-    @objc private func toggleLoginItem(_ sender: NSMenuItem) {
-        if let message = login.setEnabled(!login.isEnabled) { NSLog("scoreboard: \(message)") }
-        refresh()
     }
 
     // A second launch (make run while running) must own the socket: kill the
@@ -322,34 +313,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         menu.addItem(.separator())
 
-        let hideWhenIdleItem = NSMenuItem(
-            title: "Hide When Idle", action: #selector(toggleHideWhenIdle(_:)), keyEquivalent: "")
-        hideWhenIdleItem.target = self
-        hideWhenIdleItem.state = hideWhenIdle ? .on : .off
-        hideWhenIdleItem.toolTip =
-            "Remove the icon from the menu bar once no session is running, waiting "
-            + "or in error. Run `open -a Scoreboard` to bring it back."
-        menu.addItem(hideWhenIdleItem)
-        if hideWhenIdle { menu.addItem(delaySlider(titled: "Hide after", key: Self.idleHideDelayKey)) }
-
-        let quitWhenEmptyItem = NSMenuItem(
-            title: "Quit When No Sessions", action: #selector(toggleQuitWhenEmpty(_:)),
-            keyEquivalent: "")
-        quitWhenEmptyItem.target = self
-        quitWhenEmptyItem.state = quitWhenEmpty ? .on : .off
-        quitWhenEmptyItem.toolTip =
-            "Quit Scoreboard once there are no Claude sessions at all. "
-            + "It starts itself again when the next session registers."
-        menu.addItem(quitWhenEmptyItem)
-        if quitWhenEmpty {
-            menu.addItem(delaySlider(titled: "Quit after", key: Self.emptyQuitDelayKey))
-        }
-
-        let loginItem = NSMenuItem(
-            title: "Start at Login", action: #selector(toggleLoginItem(_:)), keyEquivalent: "")
-        loginItem.target = self
-        loginItem.state = login.isEnabled ? .on : .off
-        menu.addItem(loginItem)
+        let settingsItem = NSMenuItem(
+            title: "Settings…", action: #selector(showSettings(_:)), keyEquivalent: ",")
+        settingsItem.target = self
+        menu.addItem(settingsItem)
 
         let aboutItem = NSMenuItem(
             title: "About Scoreboard", action: #selector(showAbout(_:)), keyEquivalent: "")

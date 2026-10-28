@@ -11,7 +11,9 @@ func usage() -> Never {
         """
         usage: scoreboard <command>
 
-          init [--remove]              register (or unregister) Claude Code hooks
+          init                         register Claude Code hooks in ~/.claude
+          init --remove                unregister them from every config folder
+          init --restore               re-register every remembered config folder
           hook                         hook entrypoint, reads JSON on stdin
           state                        print the board
           rename <name> [--session ID] rename a session's menu row
@@ -36,17 +38,37 @@ func cmdHook() -> Int32 {
 
 // MARK: - init
 
-func cmdInit(remove: Bool) -> Int32 {
-    let path = Paths.claudeSettings
-    do {
-        if remove {
-            let removed = try Settings.remove(path)
-            print(removed.isEmpty
-                ? "nothing to remove"
-                : "removed scoreboard hooks: \(removed.joined(separator: ", "))")
-            return 0
+func report(_ outcomes: [ConfigFolders.Outcome], verb: String) -> Int32 {
+    var failed = false
+    for (folder, result) in outcomes {
+        let label = (folder as NSString).abbreviatingWithTildeInPath
+        switch result {
+        case .success(let events):
+            print(events.isEmpty
+                ? "  \(label): nothing to do"
+                : "  \(label): \(verb) \(events.joined(separator: ", "))")
+        case .failure(let error):
+            failed = true
+            print("  \(label): \(error)")
         }
-        let added = try Settings.merge(path)
+    }
+    return failed ? 1 : 0
+}
+
+// `init` registers ~/.claude; the Settings window handles other folders.
+// --remove strips every remembered folder (cask uninstall); --restore
+// re-registers them (cask install, which is how `brew upgrade` keeps them).
+func cmdInit(remove: Bool, restore: Bool) -> Int32 {
+    let folders = ConfigFolders.standard
+    if remove { return report(folders.removeAll(), verb: "removed") }
+    if restore {
+        let outcomes = folders.restore()
+        if outcomes.isEmpty { print("no Claude config folders registered") }
+        return report(outcomes, verb: "added")
+    }
+    let path = ConfigFolders.settingsPath(folders.defaultFolder)
+    do {
+        let added = try folders.add(folders.defaultFolder)
         let status = try Settings.scan(path)
         for event in Settings.allEvents {
             let mark = added.contains(event) ? "added" : (status[event] == true ? "✓" : "✗")
@@ -158,7 +180,7 @@ switch command {
 case "hook":
     exit(cmdHook())
 case "init":
-    exit(cmdInit(remove: args.contains("--remove")))
+    exit(cmdInit(remove: args.contains("--remove"), restore: args.contains("--restore")))
 case "state":
     exit(cmdState())
 case "rename":

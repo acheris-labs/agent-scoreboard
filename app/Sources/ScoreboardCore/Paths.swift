@@ -10,7 +10,10 @@ public enum Paths {
     // relaunch the app to deliver an event.
     public static let autostart = stateDir + "/autostart"
     public static let log = stateDir + "/hook.log"
-    public static let claudeSettings = NSString(string: "~/.claude/settings.json")
+    // Config folders whose settings.json carries our hooks (ConfigFolders).
+    public static let configFolders = stateDir + "/config-folders"
+    // Claude Code's config folder when CLAUDE_CONFIG_DIR is unset.
+    public static let defaultClaudeFolder = NSString(string: "~/.claude")
         .expandingTildeInPath
     public static let bundleID = "com.chrismadden.scoreboard"
 }
