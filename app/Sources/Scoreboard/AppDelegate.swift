@@ -34,6 +34,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // forces it back until the menu is next dismissed.
     private var forceVisible = false
 
+    // With no config folder registered no session can ever reach the board,
+    // and nothing would ever relaunch us: hiding or quitting would strand the
+    // app with no way back to Settings. Both wait until a folder is added.
+    private var hasConfigFolders: Bool { !ConfigFolders.standard.list().isEmpty }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         terminateOlderInstances()
@@ -173,10 +178,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         alert.messageText = "Scoreboard \(version)"
         alert.informativeText = "MIT © 2026 Chris Madden"
         alert.alertStyle = .informational
-        // The board's own glyph, all lamps lit, rather than a generic icon.
-        alert.icon = iconImage(
-            counts: [.running: 1, .waiting: 1, .error: 1], badge: nil, height: 96,
-            filledHousing: true)
         alert.addButton(withTitle: "OK")
         alert.addButton(withTitle: "GitHub")
         // An accessory app has no windows to bring forward, so the modal
@@ -212,7 +213,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func updateIdleVisibility(anyLit: Bool) {
         idleTimer?.invalidate()
         idleTimer = nil
-        guard Preferences.hideWhenIdle, !forceVisible else {
+        guard Preferences.hideWhenIdle, !forceVisible, hasConfigFolders else {
             statusItem.isVisible = true
             return
         }
@@ -226,7 +227,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         ) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self, Preferences.hideWhenIdle, !self.forceVisible,
-                    !self.menuIsTracking
+                    !self.menuIsTracking, self.hasConfigFolders
                 else { return }
                 self.statusItem.isVisible = false
             }
@@ -240,7 +241,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Never quit out from under an open menu or Settings window - that is
         // where the setting gets switched off. Closing either re-arms.
         guard Preferences.quitWhenEmpty, store.sessions.isEmpty, !menuIsTracking,
-            !settings.isVisible
+            !settings.isVisible, hasConfigFolders
         else { return }
         emptyTimer = Timer.scheduledTimer(
             withTimeInterval: TimeInterval(Preferences.delay(forKey: Preferences.emptyQuitDelayKey)),
@@ -248,7 +249,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         ) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self, Preferences.quitWhenEmpty, self.store.sessions.isEmpty,
-                    !self.menuIsTracking, !self.settings.isVisible
+                    !self.menuIsTracking, !self.settings.isVisible, self.hasConfigFolders
                 else { return }
                 NSLog("scoreboard: board empty, quitting")
                 NSApp.terminate(nil)

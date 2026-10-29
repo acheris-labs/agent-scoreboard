@@ -16,7 +16,7 @@ ZIP := $(BUILD_DIR)/$(APP).zip
 # difference between hooking every tool call and not.
 CLI := scoreboard-cli
 
-.PHONY: all build app sign dmg zip release clean
+.PHONY: all build app icon sign dmg zip release clean
 
 all: app
 
@@ -28,10 +28,19 @@ app: build
 	mkdir -p "$(CONTENTS)/MacOS" "$(CONTENTS)/Resources"
 	cp "$$(swift build -c release --show-bin-path)/$(APP)" "$(CONTENTS)/MacOS/$(APP)"
 	cp Info.plist "$(CONTENTS)/Info.plist"
+	cp icon/AppIcon.icns "$(CONTENTS)/Resources/AppIcon.icns"
 	printf 'APPL????' > "$(CONTENTS)/PkgInfo"
 	cp "$$(swift build -c release --show-bin-path)/$(CLI)" "$(CONTENTS)/Resources/scoreboard"
 	codesign --force --sign - "$(BUNDLE)"
 	@echo "Built $(BUNDLE)"
+
+# Regenerate the committed app icon from its drawing code. Not part of `app`:
+# the .icns is checked in so builds (and CI) never depend on rendering it.
+icon:
+	rm -rf "$(BUILD_DIR)/icon"
+	swift icon/make-icon.swift "$(BUILD_DIR)/icon"
+	iconutil -c icns -o icon/AppIcon.icns "$(BUILD_DIR)/icon/AppIcon.iconset"
+	@echo "Wrote icon/AppIcon.icns (preview: $(BUILD_DIR)/icon/preview.png)"
 
 # Replace the ad-hoc signature with a hardened-runtime Developer ID one,
 # which notarization requires.
