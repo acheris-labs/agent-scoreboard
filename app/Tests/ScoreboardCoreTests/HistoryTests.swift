@@ -41,6 +41,19 @@ final class HistoryReportTests: XCTestCase {
         XCTAssertEqual(report.buckets.last!.running, 0)
     }
 
+    func testIdleTotalAndPeakActive() {
+        // a works then sits idle; b starts as a goes idle, so only one is
+        // ever active while two are open.
+        let entries = [
+            entry(600, "a", "running"), entry(300, "a", "idle"),
+            entry(300, "b", "waiting"), entry(100, "b", "running"),
+        ]
+        let report = HistoryReport(entries: entries, range: .hour, now: now)
+        XCTAssertEqual(report.idle, 300, accuracy: 0.001)
+        XCTAssertEqual(report.peakSessions, 2)
+        XCTAssertEqual(report.peakActive, 1)
+    }
+
     func testStatesSplitAcrossBuckets() {
         // Waiting 30s into one minute bucket and 30s into the next.
         let entries = [entry(90, "a", "waiting"), entry(30, "a", "error")]
@@ -88,7 +101,7 @@ final class HistoryReportTests: XCTestCase {
         let counts = HistoryRange.allCases.map {
             HistoryReport(entries: [], range: $0, now: now).buckets.count
         }
-        XCTAssertEqual(counts, [60, 96, 168, 120])
+        XCTAssertEqual(counts, [60, 144, 96, 168, 120])
     }
 }
 

@@ -13,12 +13,14 @@ many are going at once, and when the busy times are.
 - Record how long each session spends in running, waiting and error.
 - A **Show Details** window, opened from the menu, with a chart in the style
   of `../tracker`'s chart window and totals underneath.
-- Four ranges: last hour, last 24 hours, last 7 days, last 30 days. The 7
+- Five ranges: last hour, 12 hours, 24 hours, 7 days, 30 days. The 7
   and 30 day views show day-of-week and time-of-day patterns.
 
 ## Non-goals
 
-- Idle (lamp off) and ended time: not tracked or drawn.
+- Idle (lamp off) time is not drawn as a band. It shows as the gap between
+  the coloured bands and the sessions line, and as a footer total. Ended
+  time is not tracked.
 - Breaking waiting down by project or by reason (permission prompt versus a
   question). Not now.
 - A separate hour-of-day profile view ("always busy 2 to 4pm"). The 7 and 30
@@ -101,6 +103,7 @@ buckets in memory. No stored rollups.
 | Range        | Bucket | Points |
 |:-------------|:-------|:-------|
 | Last hour    | 1 min  | 60     |
+| Last 12 h    | 5 min  | 144    |
 | Last 24 h    | 15 min | 96     |
 | Last 7 days  | 1 h    | 168    |
 | Last 30 days | 6 h    | 120    |
@@ -127,8 +130,9 @@ Layout **A, Tracker style** (chosen from mockups):
 
 - **Opening it:** a **Show Details** menu item directly under **Settings…**
   in the status menu.
-- **Range picker:** a segmented control at the top with Last hour / 24 hours
-  / 7 days / 30 days.
+- **Range picker:** a pop-up menu at the top left that reads as the chart's
+  heading ("Last 12 hours"), with ⌘1 to ⌘5 to switch. Five segments were
+  too crowded.
 - **Chart:**
   - Follows the system light/dark appearance, as Tracker's chart window does
     (my call). Dark mode is the reference look. For light mode, copy
@@ -138,14 +142,16 @@ Layout **A, Tracker style** (chosen from mockups):
     (amber), error (red). Use the colours of `StatusLevel` in the app, which
     are also the app icon's lamps.
   - The left axis is agents' worth.
-  - The session count is drawn as a white smoothed line.
+  - The session count is drawn as a white smoothed line, with a legend:
+    the gap above the colours is idle sessions.
   - Time labels run along the bottom.
 - **Footer panes** (Tracker's `FooterPane` look), with totals for the
   selected range:
   - **Running:** "You waited", total time (e.g. `6h 40m`)
   - **Waiting:** "They waited", total time
   - **Error:** total time
-  - **Sessions:** peak open sessions
+  - **Idle:** "Lamp off", total time open but idle
+  - **Peak sessions:** active / open, e.g. `2 / 3`. Active excludes idle
   - **Active** (my call): the share of the range where at least one session
     was running, as a %. This is the "what % of the day are agents running"
     number. It is wall-clock time, unlike everything else here. The

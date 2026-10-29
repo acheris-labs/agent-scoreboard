@@ -143,11 +143,12 @@ public final class HistoryRecorder {
 }
 
 public enum HistoryRange: Int, CaseIterable {
-    case hour, day, week, month
+    case hour, workday, day, week, month
 
     public var span: Double {
         switch self {
         case .hour: return 3600
+        case .workday: return 12 * 3600
         case .day: return 86400
         case .week: return 7 * 86400
         case .month: return 30 * 86400
@@ -157,6 +158,7 @@ public enum HistoryRange: Int, CaseIterable {
     public var bucket: Double {
         switch self {
         case .hour: return 60
+        case .workday: return 5 * 60
         case .day: return 15 * 60
         case .week: return 3600
         case .month: return 6 * 3600
@@ -166,9 +168,10 @@ public enum HistoryRange: Int, CaseIterable {
     public var title: String {
         switch self {
         case .hour: return "Last hour"
-        case .day: return "24 hours"
-        case .week: return "7 days"
-        case .month: return "30 days"
+        case .workday: return "Last 12 hours"
+        case .day: return "Last 24 hours"
+        case .week: return "Last 7 days"
+        case .month: return "Last 30 days"
         }
     }
 
@@ -194,7 +197,10 @@ public struct HistoryReport {
     public let running: Double
     public let waiting: Double
     public let error: Double
+    public let idle: Double  // open with the lamp off
+    // Most sessions open at once (idle included), and most not idle.
     public let peakSessions: Int
+    public let peakActive: Int
     // Wall-clock share of the range with at least one session running,
     // counted from when logging began. nil before there is any history.
     public let active: Double?
@@ -207,8 +213,9 @@ public struct HistoryReport {
         let count = Int((range.span / range.bucket).rounded())
         var buckets = (0..<count).map { HistoryBucket(start: start + Double($0) * range.bucket) }
 
-        var totals = ["running": 0.0, "waiting": 0.0, "error": 0.0]
+        var totals = ["running": 0.0, "waiting": 0.0, "error": 0.0, "idle": 0.0]
         var openEdges: [(Double, Int)] = []  // +1 / -1 as sessions open and close
+        var activeEdges: [(Double, Int)] = []  // the same, for stretches not idle
         var runningSpans: [(Double, Double)] = []
 
         let bySession = Dictionary(grouping: entries, by: \.session)
@@ -223,6 +230,7 @@ public struct HistoryReport {
                     continue
                 }
                 if openSince == nil { openSince = entry.ts }
+                if entry.state != "idle" { activeEdges += [(entry.ts, 1), (until, -1)] }
                 let lo = max(entry.ts, start)
                 let hi = min(until, now)
                 guard hi > lo else { continue }
@@ -251,7 +259,9 @@ public struct HistoryReport {
         running = totals["running"]!
         waiting = totals["waiting"]!
         error = totals["error"]!
+        idle = totals["idle"]!
         peakSessions = Self.peak(openEdges, from: start, to: now)
+        peakActive = Self.peak(activeEdges, from: start, to: now)
 
         if let first = entries.map(\.ts).min(), first < now {
             let from = max(start, first)

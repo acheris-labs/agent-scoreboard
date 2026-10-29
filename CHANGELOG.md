@@ -1,5 +1,23 @@
 # Changelog
 
+## [3.2.1]
+
+### Added
+- Show Details counts idle time: a new **Idle** total (lamp off), and
+  **Peak sessions** shows active / open, so a tab left idle no longer looks
+  like a busy agent. The legend explains the sessions line: the gap above the
+  colours is idle.
+- A **Last 12 hours** range.
+
+### Changed
+- The range is now a pop-up menu at the top of the chart, with ⌘1 to ⌘5
+  to switch.
+
+### Fixed
+- Clicking a session started through a wrapper that gives Claude its own
+  terminal (like `ush share`) now finds its Ghostty tab, instead of guessing
+  from the working directory.
+
 ## [3.2.0]
 
 ### Added

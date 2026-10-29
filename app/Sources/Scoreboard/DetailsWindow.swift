@@ -39,7 +39,7 @@ final class DetailsChartView: NSView {
         guard let report else { return }
         let plot = NSRect(
             x: bounds.minX + 40, y: bounds.minY + 24,
-            width: bounds.width - 40 - 16, height: bounds.height - 24 - 14)
+            width: bounds.width - 40 - 16, height: bounds.height - 24 - 28)
         guard plot.width > 20, plot.height > 20 else { return }
 
         let buckets = report.buckets
@@ -105,6 +105,28 @@ final class DetailsChartView: NSView {
             path.stroke()
         }
         NSGraphicsContext.current?.cgContext.restoreGState()
+        drawLegend(plot: plot, lineColor: lineColor)
+    }
+
+    // The sessions line needs a key: it counts idle tabs, so the gap between
+    // it and the coloured bands is the idle sessions.
+    private func drawLegend(plot: NSRect, lineColor: NSColor) {
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: Self.axisFont, .foregroundColor: NSColor.secondaryLabelColor,
+        ]
+        let label = NSAttributedString(
+            string: "Open sessions  (gap above the colours = idle)", attributes: attributes)
+        let size = label.size()
+        let midY = plot.maxY + 14
+        let textX = plot.maxX - size.width
+        label.draw(at: NSPoint(x: textX, y: midY - size.height / 2))
+        let swatch = NSBezierPath()
+        swatch.move(to: NSPoint(x: textX - 22, y: midY))
+        swatch.line(to: NSPoint(x: textX - 6, y: midY))
+        swatch.lineWidth = 2
+        swatch.lineCapStyle = .round
+        lineColor.setStroke()
+        swatch.stroke()
     }
 
     private func drawGrid(plot: NSRect, yMax: Double, y: (Double) -> CGFloat) {
@@ -166,6 +188,11 @@ final class DetailsChartView: NSView {
             formatter.dateFormat = "HH:mm"
             let c = calendar.dateComponents([.year, .month, .day, .hour], from: start)
             first = calendar.date(from: c)!
+        case .workday:
+            component = .hour
+            step = 2
+            formatter.dateFormat = "HH:mm"
+            first = calendar.startOfDay(for: start)
         case .day:
             component = .hour
             step = 3
@@ -361,7 +388,7 @@ final class DetailsPane: NSView {
             stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
             stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
             row.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            widthAnchor.constraint(greaterThanOrEqualToConstant: 140),
+            widthAnchor.constraint(greaterThanOrEqualToConstant: 130),
         ])
     }
 
@@ -390,16 +417,17 @@ final class DetailsWindowController: NSObject, NSWindowDelegate {
 
     private var window: NSWindow?
     private let chart = DetailsChartView()
-    private let picker = NSSegmentedControl(
-        labels: HistoryRange.allCases.map(\.title), trackingMode: .selectOne, target: nil,
-        action: nil)
+    private let picker = NSPopUpButton(frame: .zero, pullsDown: false)
     private let runningPane = DetailsPane(
         caption: "Running", label: "You waited", color: StatusLevel.running.color)
     private let waitingPane = DetailsPane(
         caption: "Waiting", label: "They waited", color: StatusLevel.waiting.color)
     private let errorPane = DetailsPane(
         caption: "Error", label: "Errored", color: StatusLevel.error.color)
-    private let sessionsPane = DetailsPane(caption: "Sessions", label: "Peak", color: .labelColor)
+    private let idlePane = DetailsPane(
+        caption: "Idle", label: "Lamp off", color: .tertiaryLabelColor)
+    private let sessionsPane = DetailsPane(
+        caption: "Peak sessions", label: "Active / open", color: .labelColor)
     private let activePane = DetailsPane(caption: "Active", label: "Agents running", color: nil)
     private var minuteTimer: Timer?
     private var reloadPending = false
@@ -407,7 +435,7 @@ final class DetailsWindowController: NSObject, NSWindowDelegate {
     var isVisible: Bool { window?.isVisible == true }
 
     private var range: HistoryRange {
-        HistoryRange(rawValue: picker.selectedSegment) ?? .day
+        HistoryRange(rawValue: picker.indexOfSelectedItem) ?? .day
     }
 
     func show() {
@@ -446,47 +474,64 @@ final class DetailsWindowController: NSObject, NSWindowDelegate {
         runningPane.set(Self.duration(report.running))
         waitingPane.set(Self.duration(report.waiting))
         errorPane.set(Self.duration(report.error))
-        sessionsPane.set("\(report.peakSessions)")
+        idlePane.set(Self.duration(report.idle))
+        sessionsPane.set("\(report.peakActive) / \(report.peakSessions)")
         activePane.set(report.active.map { "\(Int(($0 * 100).rounded()))%" } ?? "—")
     }
 
-    @objc private func rangeChanged(_ sender: NSSegmentedControl) {
-        UserDefaults.standard.set(sender.selectedSegment, forKey: Self.rangeKey)
+    @objc private func rangeChanged(_ sender: NSPopUpButton) {
+        UserDefaults.standard.set(sender.indexOfSelectedItem, forKey: Self.rangeKey)
         reload()
     }
 
     private func build() {
         let saved = UserDefaults.standard.object(forKey: Self.rangeKey) as? Int
-        picker.selectedSegment = HistoryRange(rawValue: saved ?? -1)?.rawValue ?? HistoryRange.day.rawValue
+        // Reads as the chart's heading; ⌘1-⌘5 switch without opening it.
+        for (i, range) in HistoryRange.allCases.enumerated() {
+            picker.addItem(withTitle: range.title)
+            picker.lastItem?.keyEquivalent = "\(i + 1)"
+        }
+        picker.isBordered = false
+        picker.font = .systemFont(ofSize: 15, weight: .semibold)
+        picker.selectItem(at: HistoryRange(rawValue: saved ?? -1)?.rawValue ?? HistoryRange.day.rawValue)
         picker.target = self
         picker.action = #selector(rangeChanged(_:))
+        let header = NSStackView()
+        header.addView(picker, in: .leading)
 
-        let footer = NSStackView(views: [runningPane, waitingPane, errorPane, sessionsPane, activePane])
+        let footer = NSStackView(views: [runningPane, waitingPane, errorPane, idlePane, sessionsPane, activePane])
         footer.spacing = 10
         footer.distribution = .fillEqually
 
         chart.translatesAutoresizingMaskIntoConstraints = false
-        let stack = NSStackView(views: [picker, chart, footer])
+        let stack = NSStackView(views: [header, chart, footer])
         stack.orientation = .vertical
         stack.alignment = .centerX
         stack.spacing = 12
         stack.edgeInsets = NSEdgeInsets(top: 14, left: 16, bottom: 16, right: 16)
         NSLayoutConstraint.activate([
             chart.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -32),
+            header.widthAnchor.constraint(equalTo: chart.widthAnchor),
             chart.heightAnchor.constraint(greaterThanOrEqualToConstant: 240),
         ])
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 920, height: 520),
+            contentRect: NSRect(x: 0, y: 0, width: 1000, height: 520),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered, defer: false)
         window.title = "Scoreboard Details"
         window.contentView = stack
-        window.contentMinSize = NSSize(width: 820, height: 400)
+        window.contentMinSize = NSSize(width: 980, height: 400)
         window.isReleasedWhenClosed = false
         window.delegate = self
         window.setFrameAutosaveName("ScoreboardDetails")
         if !window.setFrameUsingName("ScoreboardDetails") { window.center() }
+        // A saved frame from before the footer grew can be too narrow for it.
+        if window.frame.width < 980 {
+            var frame = window.frame
+            frame.size.width = 1000
+            window.setFrame(frame, display: false)
+        }
         self.window = window
     }
 
