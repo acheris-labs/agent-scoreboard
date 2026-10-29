@@ -17,6 +17,8 @@ public enum GhosttyScript {
     }
 
     /// Needs Ghostty 1.4+, the first version to expose a terminal's tty.
+    public static let ttys = "tell application \"Ghostty\" to get tty of every terminal"
+
     public static func focus(tty: String) -> String {
         """
         tell application "Ghostty"
