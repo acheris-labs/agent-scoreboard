@@ -1,5 +1,15 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- A proper app icon: the menu bar stoplight, all three lamps lit. It shows in
+  Finder, the About box and the Settings window.
+
+### Changed
+- While no config folder is registered, Scoreboard never hides its icon or
+  quits, since the icon is the only way back to Settings.
+
 ## [3.1.0]
 
 ### Added

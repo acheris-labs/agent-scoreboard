@@ -59,37 +59,17 @@ func statusItemImage(counts: [StatusLevel: Int]) -> NSImage {
 
 @MainActor
 func iconImage(
-    counts: [StatusLevel: Int], badge: (level: StatusLevel, count: Int)?,
-    height: CGFloat? = nil, filledHousing: Bool = false
+    counts: [StatusLevel: Int], badge: (level: StatusLevel, count: Int)?
 ) -> NSImage {
     let anyLit = counts.values.contains { $0 > 0 }
-    var size = badge == nil ? stoplightIconSize : badgeIconSize
-    if let height {
-        size = NSSize(width: size.width * height / size.height, height: height)
-    }
-    let image = NSImage(size: size, flipped: false) { rect in
-        // Geometry below is written for a 22pt canvas; scale to whatever
-        // canvas we were handed so the same drawing serves the menu bar and
-        // the About dialog.
-        let transform = NSAffineTransform()
-        transform.scale(by: rect.height / stoplightIconSize.height)
-        transform.concat()
-
+    let size = badge == nil ? stoplightIconSize : badgeIconSize
+    let image = NSImage(size: size, flipped: false) { _ in
         let outline: NSColor = anyLit ? .labelColor : .black
 
         let housing = NSBezierPath(
             roundedRect: housingRect, xRadius: 5.5, yRadius: 5.5)
         housing.lineWidth = 1.2
-        // At a glyph's size an outline reads best, but blown up for the About
-        // dialog a hollow shape looks like flat line art - fill the body so it
-        // reads as an object with lamps set into it.
-        if filledHousing {
-            NSColor(white: 0.13, alpha: 1).setFill()
-            housing.fill()
-            NSColor(white: 0.32, alpha: 1).setStroke()
-        } else {
-            outline.withAlphaComponent(0.9).setStroke()
-        }
+        outline.withAlphaComponent(0.9).setStroke()
         housing.stroke()
 
         // Unflipped, so red (top of the stoplight) has the highest y.

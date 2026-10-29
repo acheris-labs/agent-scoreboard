@@ -93,6 +93,7 @@ final class SettingsModel: ObservableObject {
                 Self.showError("Couldn't add \(url.path)", error)
             }
             self.reload()
+            self.onChange()
         }
         if let window {
             panel.beginSheetModal(for: window, completionHandler: handle)
@@ -108,6 +109,7 @@ final class SettingsModel: ObservableObject {
             Self.showError("Couldn't remove hooks from \(path)", error)
         }
         reload()
+        onChange()
     }
 
     private static func showError(_ message: String, _ error: Error) {
@@ -177,6 +179,12 @@ struct SettingsView: View {
             Toggle(
                 "Start at login",
                 isOn: Binding(get: { model.startAtLogin }, set: { model.setStartAtLogin($0) }))
+            if model.folders.isEmpty {
+                Text("Hiding and quitting are paused until a config folder is added: until then the menu bar icon is the only way back here.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .padding(20)
         .frame(width: 440)
