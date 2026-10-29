@@ -10,6 +10,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var server: SocketServer?
     private var reapTimer: Timer?
     private var wakeObserver: NSObjectProtocol?
+    private var sleepObserver: NSObjectProtocol?
+    private var pruneTimer: Timer?
+    private let details = DetailsWindowController()
 
     // Rebuilding the menu while it is open yanks it shut; defer until close.
     private var menuIsTracking = false
@@ -43,9 +46,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSApp.setActivationPolicy(.accessory)
         terminateOlderInstances()
 
+        // Close whatever a crash left open before anything new is logged.
+        store.history.recover()
         store.load()
         store.reapDead()
+        store.reopenHistory()
         store.onChange = { [weak self] in self?.refresh() }
+        pruneHistory()
+        pruneTimer = Timer.scheduledTimer(withTimeInterval: 86400, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.pruneHistory() }
+        }
 
         let server = SocketServer { [weak self] event in
             self?.store.apply(event: event)
@@ -57,8 +67,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         self.server = server
 
+        store.history.log.touchAlive()
         reapTimer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.store.reapDead() }
+            MainActor.assumeIsolated {
+                self?.store.reapDead()
+                // The last sign of life, should we die without a clean quit.
+                self?.store.history.log.touchAlive()
+            }
         }
 
         menu.delegate = self
@@ -73,7 +88,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.restoreStatusItemIfNeeded() }
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.restoreStatusItemIfNeeded()
+                // Sessions that died while we slept end now, not at wake.
+                self.store.reapDead()
+                self.store.reopenHistory()
+            }
+        }
+        // Time asleep isn't time spent waiting on anyone.
+        sleepObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.willSleepNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.store.closeHistory() }
         }
 
         // First run defaults to Open at Login - afterward, respect the user.
@@ -117,10 +144,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         settings.show()
     }
 
+    @objc private func showDetails(_ sender: Any?) {
+        details.show()
+    }
+
+    private func pruneHistory() {
+        store.history.log.prune(
+            olderThan: Date().timeIntervalSince1970 - HistoryRange.retention)
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         server?.stop()
-        if let wakeObserver {
-            NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver)
+        store.closeHistory()
+        for observer in [wakeObserver, sleepObserver].compactMap({ $0 }) {
+            NSWorkspace.shared.notificationCenter.removeObserver(observer)
         }
     }
 
@@ -238,10 +275,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func updateEmptyTimer() {
         emptyTimer?.invalidate()
         emptyTimer = nil
-        // Never quit out from under an open menu or Settings window - that is
-        // where the setting gets switched off. Closing either re-arms.
+        // Never quit out from under an open menu or window - Settings is where
+        // the setting gets switched off. Closing any of them re-arms.
         guard Preferences.quitWhenEmpty, store.sessions.isEmpty, !menuIsTracking,
-            !settings.isVisible, hasConfigFolders
+            !settings.isVisible, !details.isVisible, hasConfigFolders
         else { return }
         emptyTimer = Timer.scheduledTimer(
             withTimeInterval: TimeInterval(Preferences.delay(forKey: Preferences.emptyQuitDelayKey)),
@@ -249,7 +286,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         ) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self, Preferences.quitWhenEmpty, self.store.sessions.isEmpty,
-                    !self.menuIsTracking, !self.settings.isVisible, self.hasConfigFolders
+                    !self.menuIsTracking, !self.settings.isVisible, !self.details.isVisible,
+                    self.hasConfigFolders
                 else { return }
                 NSLog("scoreboard: board empty, quitting")
                 NSApp.terminate(nil)
@@ -278,6 +316,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem.button?.image = statusItemImage(counts: counts)
         updateEmptyTimer()
         updateIdleVisibility(anyLit: !counts.isEmpty)
+        details.setNeedsReload()
 
         if menuIsTracking {
             menuRebuildDeferred = true
@@ -318,6 +357,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             title: "Settings…", action: #selector(showSettings(_:)), keyEquivalent: ",")
         settingsItem.target = self
         menu.addItem(settingsItem)
+
+        let detailsItem = NSMenuItem(
+            title: "Show Details", action: #selector(showDetails(_:)), keyEquivalent: "")
+        detailsItem.target = self
+        menu.addItem(detailsItem)
 
         let aboutItem = NSMenuItem(
             title: "About Scoreboard", action: #selector(showAbout(_:)), keyEquivalent: "")

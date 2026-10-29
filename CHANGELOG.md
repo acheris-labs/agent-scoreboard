@@ -1,8 +1,17 @@
 # Changelog
 
-## [Unreleased]
+## [3.2.0]
 
 ### Added
+- **Show Details** (in the menu, under Settings…): a chart of how your agents
+  spend their time. Green is running (you waiting on them), amber is waiting
+  (them waiting on you), red is error, and a line shows how many sessions
+  were open. Time is summed across sessions, like CPU across cores. Pick the
+  last hour, 24 hours, 7 days or 30 days; the footer totals each state and
+  shows the share of time any agent was running.
+- History is recorded from this version on, kept for 30 days, in
+  `~/.local/state/scoreboard/history.ndjson`. Time while the Mac sleeps or
+  Scoreboard isn't running is not counted.
 - A proper app icon: the menu bar stoplight, all three lamps lit. It shows in
   Finder, the About box and the Settings window.
 

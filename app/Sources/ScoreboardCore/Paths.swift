@@ -10,6 +10,10 @@ public enum Paths {
     // relaunch the app to deliver an event.
     public static let autostart = stateDir + "/autostart"
     public static let log = stateDir + "/hook.log"
+    // One line per session state change, for Show Details (HistoryLog).
+    public static let history = stateDir + "/history.ndjson"
+    // Touched while the app runs: after a crash, its age says when we stopped.
+    public static let historyAlive = stateDir + "/history.alive"
     // Config folders whose settings.json carries our hooks (ConfigFolders).
     public static let configFolders = stateDir + "/config-folders"
     // Claude Code's config folder when CLAUDE_CONFIG_DIR is unset.

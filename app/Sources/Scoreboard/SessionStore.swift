@@ -33,6 +33,8 @@ struct Session: Codable {
 final class SessionStore {
     private(set) var sessions: [String: Session] = [:]
     var onChange: (() -> Void)?
+    // Time-in-state log behind Show Details.
+    let history = HistoryRecorder(log: .standard)
 
     func apply(event: [String: Any]) {
         guard let sessionId = event["session_id"] as? String, !sessionId.isEmpty else {
@@ -57,6 +59,10 @@ final class SessionStore {
             NSLog("scoreboard: dropping malformed event")
             return
         }
+        // Wall clock, not the event's ts: the app sees events as they happen,
+        // and the CLI's ts can be absent or zero.
+        history.record(
+            session: sessionId, state: state.rawValue, at: Date().timeIntervalSince1970)
         if state == .ended {
             guard sessions.removeValue(forKey: sessionId) != nil else { return }
         } else {
@@ -88,9 +94,27 @@ final class SessionStore {
             session.pid > 0 && kill(session.pid, 0) != 0 && errno == ESRCH
         }
         guard !dead.isEmpty else { return }
-        for session in dead { sessions.removeValue(forKey: session.sessionId) }
+        let now = Date().timeIntervalSince1970
+        for session in dead {
+            sessions.removeValue(forKey: session.sessionId)
+            history.record(session: session.sessionId, state: "ended", at: now)
+        }
         save()
         onChange?()
+    }
+
+    // Quit and sleep: stop the clock on every session, so time the app can't
+    // see is never counted.
+    func closeHistory() {
+        history.closeAll(at: Date().timeIntervalSince1970)
+    }
+
+    // Launch and wake (after a reap): start the clock again from now.
+    func reopenHistory() {
+        let now = Date().timeIntervalSince1970
+        for session in sessions.values.sorted(by: { $0.sessionId < $1.sessionId }) {
+            history.record(session: session.sessionId, state: session.state.rawValue, at: now)
+        }
     }
 
     func load() {
