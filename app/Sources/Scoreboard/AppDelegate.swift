@@ -296,12 +296,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     // A second launch (make run while running) must own the socket: kill the
-    // older instance first so unlinking its socket file is safe.
+    // older instance first so unlinking its socket file is safe. That includes
+    // a copy still running under the pre-3.2.2 bundle id.
     private func terminateOlderInstances() {
-        guard let bundleID = Bundle.main.bundleIdentifier else { return }
-        for app in NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
-        where app.processIdentifier != ProcessInfo.processInfo.processIdentifier {
-            app.forceTerminate()
+        for bundleID in Set([Paths.bundleID, Paths.legacyBundleID]) {
+            for app in NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
+            where app.processIdentifier != ProcessInfo.processInfo.processIdentifier {
+                app.forceTerminate()
+            }
         }
     }
 

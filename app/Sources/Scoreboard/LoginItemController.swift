@@ -6,7 +6,7 @@ import ServiceManagement
 @MainActor
 final class LoginItemController {
     private var service: SMAppService { SMAppService.mainApp }
-    private let bootstrappedKey = "LoginItemBootstrapped"
+    static let bootstrappedKey = "LoginItemBootstrapped"
 
     var isEnabled: Bool { service.status == .enabled }
 
@@ -15,8 +15,8 @@ final class LoginItemController {
     @discardableResult
     func bootstrapDefaultIfNeeded() -> String? {
         let defaults = UserDefaults.standard
-        guard !defaults.bool(forKey: bootstrappedKey) else { return nil }
-        defaults.set(true, forKey: bootstrappedKey)
+        guard !defaults.bool(forKey: Self.bootstrappedKey) else { return nil }
+        defaults.set(true, forKey: Self.bootstrappedKey)
         return setEnabled(true)
     }
 

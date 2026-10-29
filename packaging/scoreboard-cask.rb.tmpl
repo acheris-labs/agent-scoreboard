@@ -38,13 +38,16 @@ cask "scoreboard" do
                    args: ["init", "--remove"], print_stderr: false
   end
 
-  uninstall quit: "com.chrismadden.scoreboard"
+  # Both ids: 3.2.2 renamed com.chrismadden.scoreboard to net.acheris.scoreboard.
+  uninstall quit: ["net.acheris.scoreboard", "com.chrismadden.scoreboard"]
 
   # `brew uninstall --zap scoreboard` is the full teardown: session state,
   # snapshot, hook log, and the list of config folders. The hooks themselves
   # are already unwound by uninstall_preflight.
   zap trash: [
         "~/.local/state/scoreboard",
+        "~/Library/Caches/net.acheris.scoreboard",
+        "~/Library/Preferences/net.acheris.scoreboard.plist",
         "~/Library/Caches/com.chrismadden.scoreboard",
         "~/Library/Preferences/com.chrismadden.scoreboard.plist",
       ]

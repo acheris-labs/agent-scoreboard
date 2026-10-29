@@ -9,7 +9,7 @@
 	<key>CFBundleExecutable</key>
 	<string>Scoreboard</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.chrismadden.scoreboard</string>
+	<string>net.acheris.scoreboard</string>
 	<key>CFBundleName</key>
 	<string>Scoreboard</string>
 	<key>CFBundlePackageType</key>

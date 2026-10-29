@@ -1,5 +1,19 @@
 # Changelog
 
+## [3.2.2]
+
+### Fixed
+- Clicking a session in the Homebrew build jumps to its Ghostty tab again.
+  The signed app was missing the permission to send Apple Events, and macOS
+  refused without asking.
+
+### Changed
+- The bundle id is now `net.acheris.scoreboard` (was
+  `com.chrismadden.scoreboard`). Your settings carry over on first launch.
+  - macOS asks once more for permission to control Ghostty.
+  - Start at login is turned on again for the new id; turn it off in
+    Settings if you don't want it.
+
 ## [3.2.1]
 
 ### Added

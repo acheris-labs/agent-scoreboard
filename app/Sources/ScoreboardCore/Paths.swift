@@ -19,5 +19,8 @@ public enum Paths {
     // Claude Code's config folder when CLAUDE_CONFIG_DIR is unset.
     public static let defaultClaudeFolder = NSString(string: "~/.claude")
         .expandingTildeInPath
-    public static let bundleID = "com.chrismadden.scoreboard"
+    public static let bundleID = "net.acheris.scoreboard"
+    // The bundle id before 3.2.2: settings move over once (SettingsMigration),
+    // and a copy still running under it is quit at launch.
+    public static let legacyBundleID = "com.chrismadden.scoreboard"
 }
