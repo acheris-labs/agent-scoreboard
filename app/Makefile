@@ -50,12 +50,17 @@ icon:
 # notarization rejects it ("not signed with a valid Developer ID
 # certificate"). No --deep, which would re-sign the inner binary without
 # these options.
+#
+# The hardened runtime blocks Apple Events (jumping to a Ghostty tab) unless
+# the bundle carries the apple-events entitlement; without it macOS denies
+# silently instead of prompting.
 sign: app
 	@test -n "$(SIGN_ID)" || { echo "SIGN_ID is required"; exit 1; }
 	@test -n "$(NOTARY_PROFILE)" || { echo "NOTARY_PROFILE is required"; exit 1; }
 	codesign --force --options runtime --timestamp \
 	  --sign "$(SIGN_ID)" "$(CONTENTS)/Resources/scoreboard"
-	codesign --force --options runtime --timestamp --sign "$(SIGN_ID)" "$(BUNDLE)"
+	codesign --force --options runtime --timestamp \
+	  --entitlements Scoreboard.entitlements --sign "$(SIGN_ID)" "$(BUNDLE)"
 	codesign --verify --strict --deep "$(BUNDLE)"
 
 # Notarize via a zip, then staple the ticket into the .app itself and re-zip
